@@ -31,6 +31,7 @@ const badgeStyle = (status) => {
 
 export default function App() {
   const [wallet, setWallet] = useState('');
+  const [detectedWallets, setDetectedWallets] = useState([]);
   const [pledges, setPledges] = useState([]);
   const [loadingList, setLoadingList] = useState(false);
   const [busy, setBusy] = useState('');
@@ -43,11 +44,36 @@ export default function App() {
   const [urls, setUrls] = useState(MYANMAR_URL);
   const [deadline, setDeadline] = useState('9999999');
 
-  async function connectWallet() {
+  useEffect(() => {
+    function onAnnouncement(event) {
+      if (event.detail && event.detail.info) {
+        setDetectedWallets((prev) => {
+          if (prev.some((p) => p.info.uuid === event.detail.info.uuid)) return prev;
+          return [...prev, event.detail];
+        });
+      }
+    }
+    window.addEventListener('eip6963:announceProvider', onAnnouncement);
+    window.dispatchEvent(new Event('eip6963:requestProvider'));
+    
+    return () => window.removeEventListener('eip6963:announceProvider', onAnnouncement);
+  }, []);
+
+  async function connectWallet(providerDetail) {
     setError('');
     try {
-      if (!window.ethereum) { setError('MetaMask not found. Please install MetaMask.'); return; }
-      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+      const targetProvider = providerDetail ? providerDetail.provider : window.ethereum;
+      if (!targetProvider) { 
+        setError('No Web3 wallet found. Please install a wallet extension like MetaMask, Rabby, etc.'); 
+        return; 
+      }
+      
+      // Override global window.ethereum to ensure genlayer-js uses the selected provider
+      if (providerDetail) {
+        window.ethereum = targetProvider;
+      }
+
+      const accounts = await targetProvider.request({ method: 'eth_requestAccounts' });
       setWallet(accounts[0]);
     } catch (e) { setError(String(e?.message || e)); }
   }
@@ -113,8 +139,22 @@ export default function App() {
           </div>
           {wallet ? (
             <span style={{ ...badgeStyle('RELEASED'), fontWeight: 600 }}>● {wallet.slice(0, 6)}…{wallet.slice(-4)}</span>
+          ) : detectedWallets.length > 0 ? (
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              {detectedWallets.map(w => (
+                <button 
+                  key={w.info.uuid} 
+                  style={{ ...btn(true), display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px' }} 
+                  onClick={() => connectWallet(w)}
+                  title={w.info.name}
+                >
+                  <img src={w.info.icon} alt={w.info.name} style={{ width: 20, height: 20, borderRadius: 4 }} />
+                  Connect {w.info.name}
+                </button>
+              ))}
+            </div>
           ) : (
-            <button style={btn(true)} onClick={connectWallet}>Connect MetaMask</button>
+            <button style={btn(true)} onClick={() => connectWallet()}>Connect Wallet</button>
           )}
         </header>
 
