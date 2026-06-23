@@ -2,9 +2,9 @@ import { useState, useEffect } from 'react';
 import { readVault, makeWriteClient, PLEDGE_VAULT, TransactionStatus } from './genlayer.js';
 import Landing from './Landing.jsx';
 
-const MYANMAR_CRITERIA =
-  'Magnitude 7.7 earthquake struck Myanmar near Mandalay/Sagaing on 28 March 2025, causing thousands of deaths and major building collapses, with tremors felt in Thailand.';
-const MYANMAR_URL = 'https://en.wikipedia.org/wiki/2025_Myanmar_earthquake';
+const DEMO_TERMS =
+  'Seller agent must deliver a working REST API with an OpenAPI spec and at least 90 percent test coverage, matching the buyer order for a weather data service.';
+const DEMO_URL = 'https://en.wikipedia.org/wiki/Web_API';
 
 const C = {
   bg: '#FBF6EF', card: '#FFFFFF', ink: '#3A2E25', sub: '#8A7B6D',
@@ -28,10 +28,10 @@ export default function App() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
-  const [org, setOrg] = useState('relief_myanmar_org');
+  const [org, setOrg] = useState('seller_agent_001');
   const [amount, setAmount] = useState('10000');
-  const [criteria, setCriteria] = useState(MYANMAR_CRITERIA);
-  const [urls, setUrls] = useState(MYANMAR_URL);
+  const [criteria, setCriteria] = useState(DEMO_TERMS);
+  const [urls, setUrls] = useState(DEMO_URL);
   const [deadline, setDeadline] = useState('9999999');
 
   async function connectWallet() {
@@ -70,13 +70,13 @@ export default function App() {
       await client.waitForTransactionReceipt({ hash, status: TransactionStatus.ACCEPTED });
       await refreshList();
     } catch (e) {
-      setNotice('Transaction submitted. The AI jury may still be reaching consensus — this can take a few minutes. Use Refresh to check the latest status.');
+      setNotice('Transaction submitted. The AI jury may still be reaching consensus, which can take a few minutes. Use Refresh to check the latest status.');
     } finally { setBusy(''); }
   }
 
-  const handleSetTrusted = () => txWrite('set_trusted_org', [org], 'Registering trusted relief org…');
-  const handleCreate = () => txWrite('create_pledge', [org, parseInt(amount, 10), criteria, urls, parseInt(deadline, 10)], 'Locking the pledge on-chain…');
-  const handleTrigger = (id) => txWrite('trigger_verification', [id], 'The AI jury is investigating the disaster… (consensus may take a few minutes)');
+  const handleSetTrusted = () => txWrite('set_trusted_org', [org], 'Registering the seller agent…');
+  const handleCreate = () => txWrite('create_pledge', [org, parseInt(amount, 10), criteria, urls, parseInt(deadline, 10)], 'Locking the deal in escrow…');
+  const handleTrigger = (id) => txWrite('trigger_verification', [id], 'The AI jury is inspecting the deliverable… (consensus may take a few minutes)');
 
   if (view === 'landing') return <Landing onLaunch={() => setView('app')} />;
 
@@ -90,8 +90,8 @@ export default function App() {
 
         <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '24px 0' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }} onClick={() => setView('landing')}>
-            <div style={{ width: 38, height: 38, borderRadius: 11, background: `linear-gradient(135deg, ${C.warm}, ${C.amber})`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>🤍</div>
-            <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: -0.5 }}>CrisisPledge</div>
+            <div style={{ width: 38, height: 38, borderRadius: 11, background: `linear-gradient(135deg, ${C.warm}, ${C.amber})`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>🛡️</div>
+            <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: -0.5 }}>TrustlessAgent</div>
           </div>
           {wallet ? (
             <span style={{ ...badgeStyle('RELEASED'), fontWeight: 600 }}>● {wallet.slice(0, 6)}…{wallet.slice(-4)}</span>
@@ -101,7 +101,7 @@ export default function App() {
         </header>
 
         <div style={{ background: '#F3E7D9', borderRadius: 12, padding: '14px 18px', marginBottom: 24, fontSize: 13.5, color: C.warmDark, lineHeight: 1.6 }}>
-          <strong>How to use:</strong> 1) Connect MetaMask · 2) Register the relief org as trusted · 3) Lock a pledge · 4) Trigger AI verification and wait for consensus (a few minutes) · 5) Watch it resolve to RELEASED or refund after the deadline.
+          <strong>How to use:</strong> 1) Connect MetaMask. 2) Register the seller agent as trusted. 3) Lock a deal in escrow with the terms and the deliverable URLs. 4) Trigger the AI jury and wait for consensus, a few minutes. 5) Watch it resolve to RELEASED, or refund after the deadline.
         </div>
 
         {error && <div style={{ background: '#FBE3DC', color: C.warmDark, padding: '12px 16px', borderRadius: 10, marginBottom: 16, fontSize: 14, whiteSpace: 'pre-wrap' }}>⚠ {error}</div>}
@@ -109,33 +109,33 @@ export default function App() {
         {busy && <div style={{ background: '#FBEED2', color: C.amber, padding: '12px 16px', borderRadius: 10, marginBottom: 16, fontSize: 14, fontWeight: 600 }}>⏳ {busy}</div>}
 
         <div style={{ background: C.card, borderRadius: 18, padding: 28, border: `1px solid ${C.line}`, boxShadow: '0 6px 24px rgba(120,90,60,0.06)', marginBottom: 24 }}>
-          <h3 style={{ margin: '0 0 4px', fontSize: 18 }}>Create a relief pledge</h3>
-          <p style={{ margin: '0 0 20px', fontSize: 13, color: C.sub }}>Pre-filled with a real example (2025 Myanmar earthquake).</p>
+          <h3 style={{ margin: '0 0 4px', fontSize: 18 }}>Open an escrow deal</h3>
+          <p style={{ margin: '0 0 20px', fontSize: 13, color: C.sub }}>Pre-filled with an agent to agent example. Edit freely.</p>
           <div style={{ display: 'grid', gap: 16 }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-              <div><span style={label}>Relief organization</span><input style={input} value={org} onChange={(e) => setOrg(e.target.value)} /></div>
+              <div><span style={label}>Seller agent (id or address)</span><input style={input} value={org} onChange={(e) => setOrg(e.target.value)} /></div>
               <div><span style={label}>Amount (cents)</span><input style={input} value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
             </div>
-            <div><span style={label}>Disaster condition to verify</span><textarea style={{ ...input, resize: 'vertical' }} rows={3} value={criteria} onChange={(e) => setCriteria(e.target.value)} /></div>
-            <div><span style={label}>Source URLs (one per line)</span><textarea style={{ ...input, resize: 'vertical' }} rows={2} value={urls} onChange={(e) => setUrls(e.target.value)} /></div>
+            <div><span style={label}>Deal terms to verify</span><textarea style={{ ...input, resize: 'vertical' }} rows={3} value={criteria} onChange={(e) => setCriteria(e.target.value)} /></div>
+            <div><span style={label}>Deliverable URLs (one per line)</span><textarea style={{ ...input, resize: 'vertical' }} rows={2} value={urls} onChange={(e) => setUrls(e.target.value)} /></div>
             <div style={{ maxWidth: 220 }}><span style={label}>Deadline (timestamp)</span><input style={input} value={deadline} onChange={(e) => setDeadline(e.target.value)} /></div>
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', paddingTop: 4 }}>
-              <button style={{ ...btn(false), opacity: busy ? 0.5 : 1 }} onClick={handleSetTrusted} disabled={!!busy}>1 · Register trusted org</button>
-              <button style={{ ...btn(true), opacity: busy ? 0.5 : 1 }} onClick={handleCreate} disabled={!!busy}>2 · Lock pledge</button>
+              <button style={{ ...btn(false), opacity: busy ? 0.5 : 1 }} onClick={handleSetTrusted} disabled={!!busy}>1 · Register seller</button>
+              <button style={{ ...btn(true), opacity: busy ? 0.5 : 1 }} onClick={handleCreate} disabled={!!busy}>2 · Lock escrow</button>
             </div>
           </div>
         </div>
 
         <div style={{ background: C.card, borderRadius: 18, padding: 28, border: `1px solid ${C.line}`, boxShadow: '0 6px 24px rgba(120,90,60,0.06)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-            <h3 style={{ margin: 0, fontSize: 18 }}>Pledges</h3>
+            <h3 style={{ margin: 0, fontSize: 18 }}>Escrow deals</h3>
             <button style={{ ...btn(false), padding: '8px 14px', opacity: loadingList ? 0.5 : 1 }} onClick={refreshList} disabled={loadingList}>{loadingList ? 'Loading…' : '↻ Refresh'}</button>
           </div>
-          {pledges.length === 0 && !loadingList && <p style={{ color: C.sub, textAlign: 'center', padding: '24px 0' }}>No pledges yet. Create the first one above.</p>}
+          {pledges.length === 0 && !loadingList && <p style={{ color: C.sub, textAlign: 'center', padding: '24px 0' }}>No deals yet. Open the first one above.</p>}
           {pledges.map((p) => (
             <div key={p.id} style={{ borderTop: `1px solid ${C.line}`, padding: '18px 0' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                <strong style={{ fontSize: 15 }}>Pledge #{p.id}</strong>
+                <strong style={{ fontSize: 15 }}>Deal #{p.id}</strong>
                 <span style={badgeStyle(p.status)}>{p.status || '—'}</span>
               </div>
               <div style={{ fontSize: 14, color: C.ink, marginBottom: 4 }}>Verdict: <strong style={{ color: p.verdict === 'CONFIRMED' ? C.green : p.verdict === 'REJECTED' ? C.warmDark : C.sub }}>{p.verdict}</strong></div>
@@ -145,7 +145,7 @@ export default function App() {
                 </div>
               )}
               {p.status === 'OPEN' && (
-                <button style={{ ...btn(true), marginTop: 12, opacity: busy ? 0.5 : 1 }} onClick={() => handleTrigger(p.id)} disabled={!!busy}>⚖ Trigger AI verification</button>
+                <button style={{ ...btn(true), marginTop: 12, opacity: busy ? 0.5 : 1 }} onClick={() => handleTrigger(p.id)} disabled={!!busy}>⚖ Trigger AI verdict</button>
               )}
             </div>
           ))}
