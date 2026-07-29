@@ -31,7 +31,10 @@ for (const required of [
 }
 
 assert.match(contract, /@gl\.public\.write\.payable\s+def open_deal/, 'open_deal must be payable');
+assert.ok(contract.includes('seller = Address(seller_address)'), 'open_deal must normalize seller address before storage');
 assert.ok(contract.includes('gl.message.value'), 'open_deal must custody the caller value');
+assert.ok(contract.includes('gl.message.sender_address'), 'contract must use sender_address for Address storage');
+assert.equal(contract.includes('gl.message.sender\\n'), false, 'contract must not fall back to string sender for Address storage');
 assert.ok(contract.includes('emit_transfer'), 'release/refund must emit a native GEN transfer');
 assert.ok(contract.includes('DELIVERED') && contract.includes('FAILED') && contract.includes('INSUFFICIENT'), 'verdict enum must cover delivered/failed/insufficient');
 assert.ok(contract.includes('validator_fn') && contract.includes('leader_fn'), 'adjudication must use leader/validator nondet consensus');

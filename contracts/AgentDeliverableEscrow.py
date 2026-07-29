@@ -30,10 +30,7 @@ class Contract(gl.Contract):
         self.next_id = u256(0)
 
     def _sender(self) -> Address:
-        try:
-            return gl.message.sender_address
-        except Exception:
-            return gl.message.sender
+        return gl.message.sender_address
 
     def _addr_str(self, addr: Address) -> str:
         try:
@@ -112,8 +109,9 @@ class Contract(gl.Contract):
         _Recipient(recipient).emit_transfer(value=amount)
 
     @gl.public.write.payable
-    def open_deal(self, seller: Address, terms: str, evidence_requirements: str, deadline_ts: int) -> str:
+    def open_deal(self, seller_address: str, terms: str, evidence_requirements: str, deadline_ts: int) -> str:
         amount = gl.message.value
+        seller = Address(seller_address)
         if amount == u256(0):
             raise Exception("UserError: escrow funding required")
         if self._addr_str(seller) == self._addr_str(self._sender()):

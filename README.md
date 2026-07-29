@@ -6,9 +6,9 @@ Public repository: https://github.com/duclucky/TrustlessAgent
 
 Live app: https://trustlessagent-omega.vercel.app
 
-Contract address: `0x957860BF1bB0c2C1C32F1215D4912963CC368c16` on GenLayer studionet.
+Contract address: `0x59e470473966A0E97A5DF236D5ff349ecCef7080` on GenLayer studionet.
 
-Explorer: https://genlayer-explorer.vercel.app/address/0x957860BF1bB0c2C1C32F1215D4912963CC368c16
+Explorer: https://genlayer-explorer.vercel.app/address/0x59e470473966A0E97A5DF236D5ff349ecCef7080
 
 ## Problem
 
@@ -84,4 +84,4 @@ This runs the repository's static escrow checks and the frontend production buil
 
 ## Current Evidence Boundary
 
-This source fixes the architectural mismatch identified by reviewers. The contract is deployed on GenLayer studionet and a canonical `get_deal_count` read returned `0`. A full funded buyer/seller lifecycle with release/refund balance proof is still pending.
+This source fixes the architectural mismatch identified by reviewers. The contract is deployed on GenLayer studionet. A funded lifecycle was exercised with buyer `0xC495...7272` and seller `0x45aD...39Db`: `open_deal` funded `0.01 GEN`, `submit_deliverable` moved the deal to `SUBMITTED`, `adjudicate_delivery` judged `example.com` as `FAILED`, and `claim_refund` finalized `REFUNDED` with escrow amount `0`. A successful `DELIVERED` release-to-seller lifecycle remains pending.
