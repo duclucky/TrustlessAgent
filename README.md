@@ -6,9 +6,9 @@ Public repository: https://github.com/duclucky/TrustlessAgent
 
 Live app: https://trustlessagent-omega.vercel.app
 
-Contract address: `0x59e470473966A0E97A5DF236D5ff349ecCef7080` on GenLayer studionet.
+Contract address: `0xd64f675F613C17A2E266e2FBC780399323a05fd6` on GenLayer studionet.
 
-Explorer: https://genlayer-explorer.vercel.app/address/0x59e470473966A0E97A5DF236D5ff349ecCef7080
+Explorer: https://genlayer-explorer.vercel.app/address/0xd64f675F613C17A2E266e2FBC780399323a05fd6
 
 ## Problem
 
@@ -86,15 +86,14 @@ This runs the repository's static escrow checks and the frontend production buil
 
 Sanitized lifecycle evidence is stored in `docs/evidence/studionet/deployment.json`. The active contract has two verified value-bearing paths:
 
-- Refund path, `deal-0`: buyer funded `0.01 GEN`, seller submitted `https://example.com`, validator adjudication returned `FAILED`, and `claim_refund` moved the deal to `REFUNDED` with escrow amount `0`.
+- Refund path, `deal-0`: buyer funded `0.01 GEN`, seller submitted `https://example.com`, validator adjudication returned `FAILED`, and `claim_refund(deal_id)` moved the deal to `REFUNDED` with escrow amount `0`.
 - Release path, `deal-1`: buyer funded `0.01 GEN`, seller submitted `https://trustlessagent-omega.vercel.app/weather-agent-deliverable.txt`, validator adjudication returned `DELIVERED`, and `release_deal` moved the deal to `RELEASED` with escrow amount `0`.
 
 Release path transaction hashes:
 
-- open: `0xf9ee662d9bf9a9853c853650ccf5dc2ba40787210eed6183de0c25193894ed81`
-- submit: `0xa0d89a5e1015298089765fce99a730526577680f95c09dc2dd0239c3d1e82f2e`
-- adjudicate: `0x3aa4109cd6ae551b284baea674c84c2e4154bd8c63fda8b7631244772ff917bc`
-- release: `0x725a3784bb870336a9547e39f714578b036ea52707f15f8cdeb8d9cf516205a1`
+- submit: `0x9921a3744b14fb3607e88457bfd41e10d68a447bce1bee82e1c60af15572952f`
+- adjudicate: `0x95464a21dc419fa06651fb1b6a270e349db748554ef08191bf9c61dc7a20ba87`
+- release: `0x08178eea0d2ca05cea164f873c0e2e10b3d4390c2d82667877ec7ee31b0c1d34`
 
 ## Current Evidence Boundary
 

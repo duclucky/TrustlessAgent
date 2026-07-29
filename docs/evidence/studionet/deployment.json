@@ -1,69 +1,67 @@
 {
   "project": "TrustlessAgent",
   "network": "studionet",
-  "contractAddress": "0x59e470473966A0E97A5DF236D5ff349ecCef7080",
-  "explorer": "https://genlayer-explorer.vercel.app/address/0x59e470473966A0E97A5DF236D5ff349ecCef7080",
+  "activeRevision": {
+    "contractAddress": "0xd64f675F613C17A2E266e2FBC780399323a05fd6",
+    "explorer": "https://genlayer-explorer.vercel.app/address/0xd64f675F613C17A2E266e2FBC780399323a05fd6",
+    "sourceCommit": "ee6c01e",
+    "deployTx": "0x703f8a48ce3dd01ec4c2b75f1abba440c8fdede2b2e710ca70af5e7f3bcc25a9",
+    "deploymentReceipt": {
+      "status": "FINALIZED",
+      "result": "MAJORITY_AGREE",
+      "executionResult": null,
+      "genvmStatus": null
+    },
+    "currentDealCount": 3
+  },
   "liveApp": "https://trustlessagent-omega.vercel.app",
   "actors": {
     "buyer": "0xC495ef51618D03267A1f227aFe5b27B38c748272",
     "seller": "0x45aD397c438397A702B53a7499a78D08961D39Db"
   },
   "notes": [
-    "Sanitized evidence only. Raw receipts, traces, validator configuration, and private keys are intentionally omitted.",
-    "Both refund-to-buyer and release-to-seller paths are verified on the active Studionet contract."
+    "Sanitized evidence only. Raw receipts, traces, validator configuration, stdout, stderr, and private keys are intentionally omitted.",
+    "The active revision hardens refund deadlines by deriving current time from deterministic GenVM transaction time instead of a buyer-supplied timestamp.",
+    "Studio RPC intermittently returned HTML or server-busy responses while polling. Intermediate open/submit/adjudicate hashes that were not captured are explicitly marked as recovered from canonical state, not fabricated."
   ],
-  "deployment": {
-    "tx": "0x657d2d590bc9180d90be2a2b06a1edc5ad25d6e99784a2cad28ba5ff8eb16b13",
-    "receipt": {
-      "status": "ACCEPTED",
-      "result": "MAJORITY_AGREE",
-      "executionResult": "SUCCESS",
-      "genvmStatus": "return"
-    }
-  },
   "lifecycles": {
     "refundToBuyer": {
       "dealId": "deal-0",
       "escrowAmountWei": "10000000000000000",
       "deliverableUrl": "https://example.com",
       "steps": {
-        "open": {
-          "hash": "0x34e16da3fa89f47f1fb3eba5d8c1c7207f4564f4821430ec327290fc864863c5",
-          "state": {
-            "id": "deal-0",
-            "status": "FUNDED",
-            "verdict": "NONE",
-            "escrowAmountWei": "10000000000000000"
-          }
-        },
-        "submit": {
-          "hash": "0x39d59d4842cc108808d5f6598f1a1e9c98bfc5d7a880d87756157197995058c0",
-          "state": {
-            "id": "deal-0",
-            "status": "SUBMITTED",
-            "verdict": "NONE",
-            "escrowAmountWei": "10000000000000000",
-            "deliverableUrl": "https://example.com"
-          }
-        },
-        "adjudicate": {
-          "hash": "0x4ed237f6abc5bb8ba1ee0c8af87f9e32307eac5dcdc8a9f95331ff1585c6c93d",
-          "state": {
+        "openSubmitAdjudicate": {
+          "hash": "RECOVERED_FROM_CANONICAL_STATE_AFTER_RPC_POLLING_FAILURE",
+          "stateBeforeRefund": {
             "id": "deal-0",
             "status": "REFUND_APPROVED",
             "verdict": "FAILED",
             "escrowAmountWei": "10000000000000000",
-            "reason": "The URL points to a generic placeholder domain and does not contain a status page or weather API documentation."
+            "buyer": "0xC495ef51618D03267A1f227aFe5b27B38c748272",
+            "seller": "0x45aD397c438397A702B53a7499a78D08961D39Db",
+            "deadlineTs": "9999999999",
+            "deliverableUrl": "https://example.com",
+            "reason": "Accessible evidence is only a generic placeholder page (Example Domain) and does not show a weather API endpoint, OpenAPI spec, or test coverage evidence."
           }
         },
         "refund": {
-          "hash": "0x9dd648326ebfc33a46734da3b912775bff8a29ff3c809aa3494398a3fff66f79",
-          "state": {
+          "hash": "0x1b178f63cf8ef38385d390d3045c2ce50ea754f9495fd97ce39eeb095a43bfdc",
+          "receipt": {
+            "status": "FINALIZED",
+            "result": "MAJORITY_AGREE",
+            "executionResult": null,
+            "genvmStatus": null
+          },
+          "stateFinalized": {
             "id": "deal-0",
             "status": "REFUNDED",
             "verdict": "FAILED",
             "escrowAmountWei": "0",
-            "reason": "The URL points to a generic placeholder domain and does not contain a status page or weather API documentation."
+            "buyer": "0xC495ef51618D03267A1f227aFe5b27B38c748272",
+            "seller": "0x45aD397c438397A702B53a7499a78D08961D39Db",
+            "deadlineTs": "9999999999",
+            "deliverableUrl": "https://example.com",
+            "reason": "Accessible evidence is only a generic placeholder page (Example Domain) and does not show a weather API endpoint, OpenAPI spec, or test coverage evidence."
           }
         }
       },
@@ -75,13 +73,7 @@
       "deliverableUrl": "https://trustlessagent-omega.vercel.app/weather-agent-deliverable.txt",
       "steps": {
         "open": {
-          "hash": "0xf9ee662d9bf9a9853c853650ccf5dc2ba40787210eed6183de0c25193894ed81",
-          "receipt": {
-            "status": "ACCEPTED",
-            "result": "RECOVERED_FROM_CANONICAL_STATE",
-            "executionResult": "SUCCESS",
-            "genvmStatus": "return"
-          },
+          "hash": "RECOVERED_FROM_CANONICAL_STATE_AFTER_RPC_BUSY",
           "state": {
             "id": "deal-1",
             "status": "FUNDED",
@@ -89,50 +81,26 @@
             "escrowAmountWei": "10000000000000000",
             "buyer": "0xC495ef51618D03267A1f227aFe5b27B38c748272",
             "seller": "0x45aD397c438397A702B53a7499a78D08961D39Db",
-            "deadlineTs": "9999999999",
-            "deliverableUrl": "",
-            "reason": ""
+            "deadlineTs": "9999999999"
           }
         },
         "submit": {
-          "hash": "0xa0d89a5e1015298089765fce99a730526577680f95c09dc2dd0239c3d1e82f2e",
+          "hash": "0x9921a3744b14fb3607e88457bfd41e10d68a447bce1bee82e1c60af15572952f",
           "receipt": {
-            "status": "ACCEPTED",
+            "status": "FINALIZED",
             "result": "MAJORITY_AGREE",
             "executionResult": null,
             "genvmStatus": null
-          },
-          "state": {
-            "id": "deal-1",
-            "status": "SUBMITTED",
-            "verdict": "NONE",
-            "escrowAmountWei": "10000000000000000",
-            "buyer": "0xC495ef51618D03267A1f227aFe5b27B38c748272",
-            "seller": "0x45aD397c438397A702B53a7499a78D08961D39Db",
-            "deadlineTs": "9999999999",
-            "deliverableUrl": "https://trustlessagent-omega.vercel.app/weather-agent-deliverable.txt",
-            "reason": ""
           }
         },
         "adjudicate": {
-          "hash": "0x3aa4109cd6ae551b284baea674c84c2e4154bd8c63fda8b7631244772ff917bc",
+          "hash": "0x95464a21dc419fa06651fb1b6a270e349db748554ef08191bf9c61dc7a20ba87",
           "receipt": {
             "status": "FINALIZED",
             "result": "MAJORITY_AGREE",
             "executionResult": null,
             "genvmStatus": null
           },
-          "stateAccepted": {
-            "id": "deal-1",
-            "status": "RELEASE_APPROVED",
-            "verdict": "DELIVERED",
-            "escrowAmountWei": "10000000000000000",
-            "buyer": "0xC495ef51618D03267A1f227aFe5b27B38c748272",
-            "seller": "0x45aD397c438397A702B53a7499a78D08961D39Db",
-            "deadlineTs": "9999999999",
-            "deliverableUrl": "https://trustlessagent-omega.vercel.app/weather-agent-deliverable.txt",
-            "reason": "The provided URL contains a publicly accessible text artifact describing a weather lookup REST API, includes a public endpoint, OpenAPI specification, and test coverage evidence, satisfying all acceptance criteria."
-          },
           "stateFinalized": {
             "id": "deal-1",
             "status": "RELEASE_APPROVED",
@@ -142,28 +110,17 @@
             "seller": "0x45aD397c438397A702B53a7499a78D08961D39Db",
             "deadlineTs": "9999999999",
             "deliverableUrl": "https://trustlessagent-omega.vercel.app/weather-agent-deliverable.txt",
-            "reason": "The provided URL contains a publicly accessible text artifact describing a weather lookup REST API, includes a public endpoint, OpenAPI specification, and test coverage evidence, satisfying all acceptance criteria."
+            "reason": "The submitted URL content describes a weather lookup REST API, provides a public endpoint, an OpenAPI-style contract, and meaningful test coverage evidence, satisfying all acceptance criteria."
           }
         },
         "release": {
-          "hash": "0x725a3784bb870336a9547e39f714578b036ea52707f15f8cdeb8d9cf516205a1",
+          "hash": "0x08178eea0d2ca05cea164f873c0e2e10b3d4390c2d82667877ec7ee31b0c1d34",
           "receipt": {
-            "status": "ACCEPTED",
+            "status": "FINALIZED",
             "result": "MAJORITY_AGREE",
             "executionResult": null,
             "genvmStatus": null
           },
-          "stateAccepted": {
-            "id": "deal-1",
-            "status": "RELEASED",
-            "verdict": "DELIVERED",
-            "escrowAmountWei": "0",
-            "buyer": "0xC495ef51618D03267A1f227aFe5b27B38c748272",
-            "seller": "0x45aD397c438397A702B53a7499a78D08961D39Db",
-            "deadlineTs": "9999999999",
-            "deliverableUrl": "https://trustlessagent-omega.vercel.app/weather-agent-deliverable.txt",
-            "reason": "The provided URL contains a publicly accessible text artifact describing a weather lookup REST API, includes a public endpoint, OpenAPI specification, and test coverage evidence, satisfying all acceptance criteria."
-          },
           "stateFinalized": {
             "id": "deal-1",
             "status": "RELEASED",
@@ -173,12 +130,35 @@
             "seller": "0x45aD397c438397A702B53a7499a78D08961D39Db",
             "deadlineTs": "9999999999",
             "deliverableUrl": "https://trustlessagent-omega.vercel.app/weather-agent-deliverable.txt",
-            "reason": "The provided URL contains a publicly accessible text artifact describing a weather lookup REST API, includes a public endpoint, OpenAPI specification, and test coverage evidence, satisfying all acceptance criteria."
+            "reason": "The submitted URL content describes a weather lookup REST API, provides a public endpoint, an OpenAPI-style contract, and meaningful test coverage evidence, satisfying all acceptance criteria."
           }
         }
       },
       "consequence": "Seller release path reached RELEASED and escrowAmountWei is 0."
+    },
+    "recoverySettlement": {
+      "dealId": "deal-2",
+      "reason": "A second clean release attempt hit server-busy while reading state after adjudication. The value-bearing state was recovered and settled.",
+      "releaseTx": "0xa1ada71b3e8d88b864ecd4b5dc25ce94950a9ceb078345763e48b10784a5cbae",
+      "stateFinalized": {
+        "id": "deal-2",
+        "status": "RELEASED",
+        "verdict": "DELIVERED",
+        "escrowAmountWei": "0",
+        "buyer": "0xC495ef51618D03267A1f227aFe5b27B38c748272",
+        "seller": "0x45aD397c438397A702B53a7499a78D08961D39Db",
+        "deadlineTs": "9999999999",
+        "deliverableUrl": "https://trustlessagent-omega.vercel.app/weather-agent-deliverable.txt",
+        "reason": "Submitted URL content is accessible and includes a public weather REST endpoint, an OpenAPI-style spec, and meaningful test coverage evidence matching the agreed acceptance criteria."
+      }
     }
   },
-  "currentDealCount": 2
+  "archivedRevisions": [
+    {
+      "contractAddress": "0x59e470473966A0E97A5DF236D5ff349ecCef7080",
+      "reasonSuperseded": "Replaced after hardening claim_refund to remove caller-supplied timestamps and adding consequence-class equivalence.",
+      "deploymentTx": "0x657d2d590bc9180d90be2a2b06a1edc5ad25d6e99784a2cad28ba5ff8eb16b13",
+      "zeroAccountingEvidence": "Prior revision verified refund and release paths with escrowAmountWei 0 before supersession."
+    }
+  ]
 }

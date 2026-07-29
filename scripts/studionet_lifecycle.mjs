@@ -7,7 +7,7 @@ const projectRoot = path.resolve(path.dirname(__filename), '..');
 const genlayerRoot = path.resolve(projectRoot, '..');
 const evidenceDir = path.join(projectRoot, 'docs', 'evidence', 'studionet');
 const evidencePath = path.join(evidenceDir, 'deployment.json');
-const contractAddress = process.env.VITE_CONTRACT_ADDRESS || '0x59e470473966A0E97A5DF236D5ff349ecCef7080';
+const contractAddress = process.env.VITE_CONTRACT_ADDRESS || '0xd64f675F613C17A2E266e2FBC780399323a05fd6';
 const liveApp = 'https://trustlessagent-omega.vercel.app';
 const defaultDeliverableUrl = `${liveApp}/weather-agent-deliverable.txt`;
 
@@ -261,6 +261,37 @@ async function runRefundPath() {
   }, null, 2));
 }
 
+async function claimExistingRefund(dealId) {
+  if (!dealId) throw new Error('deal id is required');
+  const stateBefore = await readDeal(dealId, 'accepted');
+  if (stateBefore.status !== 'REFUND_APPROVED') {
+    throw new Error(`deal is not REFUND_APPROVED: ${JSON.stringify(stateBefore)}`);
+  }
+  const refund = await writeStep(buyerClient, 'claim_refund', [dealId]);
+  refund.stateAccepted = await readDeal(dealId, 'accepted');
+  refund.stateFinalized = await readDeal(dealId, 'finalized');
+
+  const evidence = loadEvidence();
+  evidence.lifecycles.refundToBuyerLatest = {
+    dealId,
+    escrowAmountWei: stateBefore.escrowAmountWei,
+    deliverableUrl: stateBefore.deliverableUrl,
+    steps: {
+      recoveredBeforeRefund: { state: stateBefore },
+      refund,
+    },
+    consequence: 'Buyer refund path reached REFUNDED and escrowAmountWei is 0.',
+  };
+  saveEvidence(evidence);
+  console.log(JSON.stringify({
+    lifecycle: 'refundToBuyerLatest',
+    dealId,
+    contractAddress,
+    refundTx: refund.hash,
+    finalState: refund.stateAccepted,
+  }, null, 2));
+}
+
 async function inspect() {
   const evidence = loadEvidence();
   evidence.currentDealCount = await dealCount('accepted');
@@ -280,6 +311,8 @@ if (command === 'inspect') {
   await runReleasePath(process.argv[3] || '', process.argv[4] || '');
 } else if (command === 'refund') {
   await runRefundPath();
+} else if (command === 'claim-refund') {
+  await claimExistingRefund(process.argv[3] || '');
 } else {
   throw new Error(`unknown command: ${command}`);
 }
