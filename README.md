@@ -2,6 +2,12 @@
 
 TrustlessAgent is an agent-deliverable escrow for GenLayer: a buyer funds a deal, a seller submits deliverable evidence, validators judge whether the work meets the agreed terms, and the contract releases funds or refunds the buyer.
 
+Public repository: https://github.com/duclucky/TrustlessAgent
+
+Live app: https://trustlessagent-omega.vercel.app
+
+Contract address: pending redeploy of `AgentDeliverableEscrow` on GenLayer studionet.
+
 ## Problem
 
 Agent-to-agent commerce needs more than a payment rail. A buyer should not have to pay before seeing useful work, and a seller should not have to trust a buyer who can copy the work and falsely reject it. A deterministic contract can custody tokens, but it cannot inspect a repository, API, document, or hosted artifact and decide whether the deliverable satisfies natural-language terms.
