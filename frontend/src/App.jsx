@@ -1,160 +1,266 @@
-import { useState, useEffect } from 'react';
-import { readVault, makeWriteClient, PLEDGE_VAULT, TransactionStatus } from './genlayer.js';
-import Landing from './Landing.jsx';
+import { useEffect, useMemo, useState } from 'react';
+import { AGENT_ESCROW, makeWriteClient, readEscrow, TransactionStatus } from './genlayer.js';
 
-const DEMO_TERMS =
-  'Seller agent must deliver a working REST API with an OpenAPI spec and at least 90 percent test coverage, matching the buyer order for a weather data service.';
-const DEMO_URL = 'https://en.wikipedia.org/wiki/Web_API';
+const TERMS =
+  'Seller agent must deliver a working REST API for weather lookups with a public endpoint, an OpenAPI description, and evidence of meaningful test coverage.';
+const REQUIREMENTS =
+  'Validators inspect the submitted URL content and decide whether the deliverable is accessible, matches the agreed API scope, and provides enough implementation evidence.';
 
 const C = {
-  bg: '#FBF6EF', card: '#FFFFFF', ink: '#3A2E25', sub: '#8A7B6D',
-  line: '#EADFD2', warm: '#E07A3F', warmDark: '#C4612C', green: '#2E8B6F', amber: '#C98A1A', slate: '#6B7A86',
+  bg: '#f7f5f1',
+  panel: '#ffffff',
+  ink: '#202124',
+  sub: '#62666d',
+  line: '#d8dce2',
+  blue: '#265fdd',
+  blueSoft: '#e8efff',
+  green: '#16794c',
+  red: '#aa2e25',
+  amber: '#9a6700',
 };
 
-const badgeStyle = (status) => {
-  let bg = '#EFE7DB', fg = C.sub;
-  if (status === 'RELEASED') { bg = '#DDF1EA'; fg = C.green; }
-  else if (status === 'REFUNDED') { bg = '#FBEED2'; fg = C.amber; }
-  else if (status === 'OPEN') { bg = '#E7EEF2'; fg = C.slate; }
-  return { display: 'inline-block', padding: '2px 12px', borderRadius: 999, fontSize: 13, fontWeight: 700, background: bg, color: fg, letterSpacing: 0.3 };
-};
+function weiFromGen(value) {
+  const clean = String(value || '0').trim();
+  const [whole, frac = ''] = clean.split('.');
+  const padded = (frac + '000000000000000000').slice(0, 18);
+  return BigInt(whole || '0') * 10n ** 18n + BigInt(padded || '0');
+}
+
+function parseDeal(raw) {
+  const parts = String(raw || '').split('|');
+  return {
+    id: parts[0] || '',
+    status: parts[1] || '',
+    verdict: parts[2] || '',
+    amount: parts[3] || '0',
+    buyer: parts[4] || '',
+    seller: parts[5] || '',
+    deadline: parts[6] || '',
+  };
+}
+
+function statusColor(status) {
+  if (status === 'RELEASED' || status === 'RELEASE_APPROVED') return C.green;
+  if (status === 'REFUNDED' || status === 'REFUND_APPROVED') return C.red;
+  if (status === 'SUBMITTED') return C.amber;
+  return C.blue;
+}
 
 export default function App() {
-  const [view, setView] = useState('landing');
   const [wallet, setWallet] = useState('');
-  const [pledges, setPledges] = useState([]);
-  const [loadingList, setLoadingList] = useState(false);
+  const [deals, setDeals] = useState([]);
+  const [selectedDeal, setSelectedDeal] = useState('deal-0');
+  const [seller, setSeller] = useState('');
+  const [amount, setAmount] = useState('0.1');
+  const [terms, setTerms] = useState(TERMS);
+  const [requirements, setRequirements] = useState(REQUIREMENTS);
+  const [deadline, setDeadline] = useState('9999999999');
+  const [deliverableUrl, setDeliverableUrl] = useState('https://example.com');
   const [busy, setBusy] = useState('');
+  const [message, setMessage] = useState('');
   const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
 
-  const [org, setOrg] = useState('seller_agent_001');
-  const [amount, setAmount] = useState('10000');
-  const [criteria, setCriteria] = useState(DEMO_TERMS);
-  const [urls, setUrls] = useState(DEMO_URL);
-  const [deadline, setDeadline] = useState('9999999');
+  const contractReady = useMemo(() => !AGENT_ESCROW.endsWith('0000000000000000000000000000000000000000'), []);
 
   async function connectWallet() {
     setError('');
-    try {
-      if (!window.ethereum) { setError('MetaMask not found. Please install MetaMask.'); return; }
-      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-      setWallet(accounts[0]);
-    } catch (e) { setError(String(e?.message || e)); }
+    if (!window.ethereum) {
+      setError('MetaMask is required for write transactions.');
+      return;
+    }
+    const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+    setWallet(accounts[0]);
   }
 
-  async function refreshList() {
-    setLoadingList(true); setError('');
+  async function refreshDeals() {
+    setError('');
     try {
-      const count = Number(await readVault('get_pledge_count', []));
-      const items = [];
-      for (let i = 0; i < count; i++) {
-        const status = String(await readVault('get_status', [i]));
-        const verdict = String(await readVault('get_verdict', [i]));
-        const reason = String(await readVault('get_reason', [i]));
-        items.push({ id: i, status, verdict, reason });
+      const count = Number(await readEscrow('get_deal_count', []));
+      const next = [];
+      for (let i = 0; i < count; i += 1) {
+        const id = `deal-${i}`;
+        const deal = parseDeal(await readEscrow('get_deal', [id]));
+        const reason = String(await readEscrow('get_reason', [id]));
+        next.push({ ...deal, reason });
       }
-      setPledges(items.reverse());
-    } catch (e) { setError(String(e?.message || e)); }
-    finally { setLoadingList(false); }
+      setDeals(next.reverse());
+    } catch (e) {
+      setError(String(e?.message || e));
+    }
   }
 
-  useEffect(() => { if (view === 'app') refreshList(); }, [view]);
+  useEffect(() => {
+    refreshDeals();
+  }, []);
 
-  async function txWrite(functionName, args, busyLabel) {
-    if (!wallet) { setError('Connect your wallet first.'); return; }
-    setBusy(busyLabel); setError(''); setNotice('');
+  async function write(functionName, args, label, value = 0n) {
+    if (!wallet) {
+      setError('Connect a funded studionet wallet first.');
+      return;
+    }
+    setBusy(label);
+    setError('');
+    setMessage('');
     try {
       const client = makeWriteClient(wallet);
-      const hash = await client.writeContract({ address: PLEDGE_VAULT, functionName, args, value: BigInt(0) });
+      const hash = await client.writeContract({
+        address: AGENT_ESCROW,
+        functionName,
+        args,
+        value,
+      });
       await client.waitForTransactionReceipt({ hash, status: TransactionStatus.ACCEPTED });
-      await refreshList();
+      setMessage(`Transaction accepted: ${hash}`);
+      await refreshDeals();
     } catch (e) {
-      setNotice('Transaction submitted. The AI jury may still be reaching consensus, which can take a few minutes. Use Refresh to check the latest status.');
-    } finally { setBusy(''); }
+      setError(String(e?.message || e));
+    } finally {
+      setBusy('');
+    }
   }
 
-  const handleSetTrusted = () => txWrite('set_trusted_org', [org], 'Registering the seller agent…');
-  const handleCreate = () => txWrite('create_pledge', [org, parseInt(amount, 10), criteria, urls, parseInt(deadline, 10)], 'Locking the deal in escrow…');
-  const handleTrigger = (id) => txWrite('trigger_verification', [id], 'The AI jury is inspecting the deliverable… (consensus may take a few minutes)');
+  function openDeal() {
+    write('open_deal', [seller, terms, requirements, Number(deadline)], 'Opening funded escrow', weiFromGen(amount));
+  }
 
-  if (view === 'landing') return <Landing onLaunch={() => setView('app')} />;
+  function submitDeliverable() {
+    write('submit_deliverable', [selectedDeal, deliverableUrl], 'Submitting deliverable evidence');
+  }
 
-  const input = { width: '100%', padding: '10px 12px', borderRadius: 10, border: `1px solid ${C.line}`, background: '#FFFDFA', color: C.ink, fontSize: 14, fontFamily: 'inherit', boxSizing: 'border-box' };
-  const label = { fontSize: 13, fontWeight: 600, color: C.sub, marginBottom: 6, display: 'block' };
-  const btn = (primary) => ({ padding: '11px 18px', borderRadius: 10, border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 14, color: primary ? '#fff' : C.warmDark, background: primary ? C.warm : '#F3E7D9' });
+  function adjudicate() {
+    write('adjudicate_delivery', [selectedDeal], 'Waiting for validator adjudication');
+  }
+
+  function release() {
+    write('release_deal', [selectedDeal], 'Releasing escrow to seller');
+  }
+
+  function refund() {
+    const nowTs = Math.floor(Date.now() / 1000);
+    write('claim_refund', [selectedDeal, nowTs], 'Refunding escrow to buyer');
+  }
+
+  const input = {
+    width: '100%',
+    border: `1px solid ${C.line}`,
+    borderRadius: 6,
+    padding: '10px 12px',
+    font: 'inherit',
+    color: C.ink,
+    boxSizing: 'border-box',
+  };
+  const label = { display: 'block', marginBottom: 6, color: C.sub, fontSize: 13, fontWeight: 600 };
+  const button = (primary = false) => ({
+    border: `1px solid ${primary ? C.blue : C.line}`,
+    borderRadius: 6,
+    padding: '10px 14px',
+    background: primary ? C.blue : '#fff',
+    color: primary ? '#fff' : C.ink,
+    fontWeight: 700,
+    cursor: busy ? 'wait' : 'pointer',
+  });
 
   return (
-    <div style={{ minHeight: '100vh', background: C.bg, color: C.ink, fontFamily: "'Segoe UI', system-ui, sans-serif" }}>
-      <div style={{ maxWidth: 860, margin: '0 auto', padding: '0 20px 64px' }}>
-
-        <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '24px 0' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }} onClick={() => setView('landing')}>
-            <div style={{ width: 38, height: 38, borderRadius: 11, background: `linear-gradient(135deg, ${C.warm}, ${C.amber})`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>🛡️</div>
-            <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: -0.5 }}>TrustlessAgent</div>
+    <main style={{ minHeight: '100vh', background: C.bg, color: C.ink, fontFamily: 'Inter, Segoe UI, system-ui, sans-serif' }}>
+      <div style={{ maxWidth: 1180, margin: '0 auto', padding: '24px' }}>
+        <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+          <div>
+            <h1 style={{ margin: 0, fontSize: 28, letterSpacing: 0 }}>TrustlessAgent</h1>
+            <div style={{ color: C.sub, marginTop: 4 }}>Agent deliverable escrow on GenLayer studionet</div>
           </div>
-          {wallet ? (
-            <span style={{ ...badgeStyle('RELEASED'), fontWeight: 600 }}>● {wallet.slice(0, 6)}…{wallet.slice(-4)}</span>
-          ) : (
-            <button style={btn(true)} onClick={connectWallet}>Connect MetaMask</button>
-          )}
+          <button style={button(true)} onClick={wallet ? refreshDeals : connectWallet}>
+            {wallet ? `${wallet.slice(0, 6)}...${wallet.slice(-4)}` : 'Connect Wallet'}
+          </button>
         </header>
 
-        <div style={{ background: '#F3E7D9', borderRadius: 12, padding: '14px 18px', marginBottom: 24, fontSize: 13.5, color: C.warmDark, lineHeight: 1.6 }}>
-          <strong>How to use:</strong> 1) Connect MetaMask. 2) Register the seller agent as trusted. 3) Lock a deal in escrow with the terms and the deliverable URLs. 4) Trigger the AI jury and wait for consensus, a few minutes. 5) Watch it resolve to RELEASED, or refund after the deadline.
-        </div>
-
-        {error && <div style={{ background: '#FBE3DC', color: C.warmDark, padding: '12px 16px', borderRadius: 10, marginBottom: 16, fontSize: 14, whiteSpace: 'pre-wrap' }}>⚠ {error}</div>}
-        {notice && <div style={{ background: '#E7EEF2', color: C.slate, padding: '12px 16px', borderRadius: 10, marginBottom: 16, fontSize: 14 }}>ℹ {notice}</div>}
-        {busy && <div style={{ background: '#FBEED2', color: C.amber, padding: '12px 16px', borderRadius: 10, marginBottom: 16, fontSize: 14, fontWeight: 600 }}>⏳ {busy}</div>}
-
-        <div style={{ background: C.card, borderRadius: 18, padding: 28, border: `1px solid ${C.line}`, boxShadow: '0 6px 24px rgba(120,90,60,0.06)', marginBottom: 24 }}>
-          <h3 style={{ margin: '0 0 4px', fontSize: 18 }}>Open an escrow deal</h3>
-          <p style={{ margin: '0 0 20px', fontSize: 13, color: C.sub }}>Pre-filled with an agent to agent example. Edit freely.</p>
-          <div style={{ display: 'grid', gap: 16 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-              <div><span style={label}>Seller agent (id or address)</span><input style={input} value={org} onChange={(e) => setOrg(e.target.value)} /></div>
-              <div><span style={label}>Amount (cents)</span><input style={input} value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
-            </div>
-            <div><span style={label}>Deal terms to verify</span><textarea style={{ ...input, resize: 'vertical' }} rows={3} value={criteria} onChange={(e) => setCriteria(e.target.value)} /></div>
-            <div><span style={label}>Deliverable URLs (one per line)</span><textarea style={{ ...input, resize: 'vertical' }} rows={2} value={urls} onChange={(e) => setUrls(e.target.value)} /></div>
-            <div style={{ maxWidth: 220 }}><span style={label}>Deadline (timestamp)</span><input style={input} value={deadline} onChange={(e) => setDeadline(e.target.value)} /></div>
-            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', paddingTop: 4 }}>
-              <button style={{ ...btn(false), opacity: busy ? 0.5 : 1 }} onClick={handleSetTrusted} disabled={!!busy}>1 · Register seller</button>
-              <button style={{ ...btn(true), opacity: busy ? 0.5 : 1 }} onClick={handleCreate} disabled={!!busy}>2 · Lock escrow</button>
-            </div>
+        {!contractReady && (
+          <div style={{ border: `1px solid ${C.line}`, borderRadius: 6, padding: 12, background: C.blueSoft, marginBottom: 16 }}>
+            Set VITE_CONTRACT_ADDRESS after deploying AgentDeliverableEscrow.
           </div>
-        </div>
+        )}
+        {message && <div style={{ border: `1px solid ${C.line}`, borderRadius: 6, padding: 12, background: '#eef8f2', color: C.green, marginBottom: 16 }}>{message}</div>}
+        {error && <div style={{ border: `1px solid ${C.line}`, borderRadius: 6, padding: 12, background: '#fff0ee', color: C.red, marginBottom: 16, whiteSpace: 'pre-wrap' }}>{error}</div>}
+        {busy && <div style={{ border: `1px solid ${C.line}`, borderRadius: 6, padding: 12, background: '#fff8e6', color: C.amber, marginBottom: 16 }}>{busy}</div>}
 
-        <div style={{ background: C.card, borderRadius: 18, padding: 28, border: `1px solid ${C.line}`, boxShadow: '0 6px 24px rgba(120,90,60,0.06)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-            <h3 style={{ margin: 0, fontSize: 18 }}>Escrow deals</h3>
-            <button style={{ ...btn(false), padding: '8px 14px', opacity: loadingList ? 0.5 : 1 }} onClick={refreshList} disabled={loadingList}>{loadingList ? 'Loading…' : '↻ Refresh'}</button>
-          </div>
-          {pledges.length === 0 && !loadingList && <p style={{ color: C.sub, textAlign: 'center', padding: '24px 0' }}>No deals yet. Open the first one above.</p>}
-          {pledges.map((p) => (
-            <div key={p.id} style={{ borderTop: `1px solid ${C.line}`, padding: '18px 0' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                <strong style={{ fontSize: 15 }}>Deal #{p.id}</strong>
-                <span style={badgeStyle(p.status)}>{p.status || '—'}</span>
+        <section style={{ display: 'grid', gridTemplateColumns: 'minmax(320px, 430px) 1fr', gap: 18, alignItems: 'start' }}>
+          <div style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 8, padding: 18 }}>
+            <h2 style={{ fontSize: 18, margin: '0 0 14px' }}>Open Funded Escrow</h2>
+            <div style={{ display: 'grid', gap: 12 }}>
+              <div>
+                <label style={label}>Seller address</label>
+                <input style={input} value={seller} onChange={(e) => setSeller(e.target.value)} placeholder="0x..." />
               </div>
-              <div style={{ fontSize: 14, color: C.ink, marginBottom: 4 }}>Verdict: <strong style={{ color: p.verdict === 'CONFIRMED' ? C.green : p.verdict === 'REJECTED' ? C.warmDark : C.sub }}>{p.verdict}</strong></div>
-              {p.reason && p.reason !== 'NONE' && p.reason !== '' && (
-                <div style={{ fontSize: 13, color: C.sub, lineHeight: 1.6, background: '#FBF6EF', padding: '10px 14px', borderRadius: 10, marginTop: 6 }}>
-                  <span style={{ fontWeight: 700, color: C.warmDark }}>AI jury: </span>{p.reason}
-                </div>
-              )}
-              {p.status === 'OPEN' && (
-                <button style={{ ...btn(true), marginTop: 12, opacity: busy ? 0.5 : 1 }} onClick={() => handleTrigger(p.id)} disabled={!!busy}>⚖ Trigger AI verdict</button>
-              )}
+              <div>
+                <label style={label}>Funding amount in GEN</label>
+                <input style={input} value={amount} onChange={(e) => setAmount(e.target.value)} />
+              </div>
+              <div>
+                <label style={label}>Deliverable terms</label>
+                <textarea style={{ ...input, minHeight: 96, resize: 'vertical' }} value={terms} onChange={(e) => setTerms(e.target.value)} />
+              </div>
+              <div>
+                <label style={label}>Evidence requirements</label>
+                <textarea style={{ ...input, minHeight: 72, resize: 'vertical' }} value={requirements} onChange={(e) => setRequirements(e.target.value)} />
+              </div>
+              <div>
+                <label style={label}>Refund deadline timestamp</label>
+                <input style={input} value={deadline} onChange={(e) => setDeadline(e.target.value)} />
+              </div>
+              <button style={button(true)} onClick={openDeal} disabled={!!busy}>Open Escrow</button>
             </div>
-          ))}
-        </div>
+          </div>
 
-        <footer style={{ textAlign: 'center', marginTop: 32, fontSize: 12, color: C.sub }}>
-          Built on GenLayer · Intelligent Contracts that read the web and reason on-chain
-        </footer>
+          <div style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 8, padding: 18 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', marginBottom: 14 }}>
+              <h2 style={{ fontSize: 18, margin: 0 }}>Deal Workflow</h2>
+              <button style={button()} onClick={refreshDeals} disabled={!!busy}>Refresh</button>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+              <div>
+                <label style={label}>Deal ID</label>
+                <input style={input} value={selectedDeal} onChange={(e) => setSelectedDeal(e.target.value)} />
+              </div>
+              <div>
+                <label style={label}>Deliverable URL</label>
+                <input style={input} value={deliverableUrl} onChange={(e) => setDeliverableUrl(e.target.value)} />
+              </div>
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 18 }}>
+              <button style={button()} onClick={submitDeliverable} disabled={!!busy}>Submit Deliverable</button>
+              <button style={button(true)} onClick={adjudicate} disabled={!!busy}>Adjudicate</button>
+              <button style={button()} onClick={release} disabled={!!busy}>Release</button>
+              <button style={button()} onClick={refund} disabled={!!busy}>Refund</button>
+            </div>
+
+            <div style={{ display: 'grid', gap: 10 }}>
+              {deals.length === 0 && <div style={{ color: C.sub, padding: '20px 0', textAlign: 'center' }}>No canonical deals found.</div>}
+              {deals.map((deal) => (
+                <button
+                  key={deal.id}
+                  onClick={() => setSelectedDeal(deal.id)}
+                  style={{
+                    textAlign: 'left',
+                    border: `1px solid ${selectedDeal === deal.id ? C.blue : C.line}`,
+                    borderRadius: 8,
+                    padding: 14,
+                    background: selectedDeal === deal.id ? C.blueSoft : '#fff',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
+                    <strong>{deal.id}</strong>
+                    <span style={{ color: statusColor(deal.status), fontWeight: 800 }}>{deal.status || 'UNKNOWN'}</span>
+                  </div>
+                  <div style={{ color: C.sub, fontSize: 13 }}>Verdict: {deal.verdict || 'NONE'} | Escrow wei: {deal.amount}</div>
+                  <div style={{ color: C.sub, fontSize: 13, marginTop: 4 }}>Buyer: {deal.buyer || 'unknown'}</div>
+                  <div style={{ color: C.sub, fontSize: 13 }}>Seller: {deal.seller || 'unknown'}</div>
+                  {deal.reason && <div style={{ color: C.ink, fontSize: 13, marginTop: 8 }}>{deal.reason}</div>}
+                </button>
+              ))}
+            </div>
+          </div>
+        </section>
       </div>
-    </div>
+    </main>
   );
 }

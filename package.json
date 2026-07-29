@@ -1,0 +1,10 @@
+{
+  "name": "trustlessagent",
+  "private": true,
+  "version": "0.2.0",
+  "type": "module",
+  "scripts": {
+    "test": "node tests/escrow_static_test.mjs",
+    "check": "npm run test && npm --prefix frontend run build"
+  }
+}

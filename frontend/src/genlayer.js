@@ -1,28 +1,28 @@
 import { createClient, createAccount } from 'genlayer-js';
-import { testnetBradbury } from 'genlayer-js/chains';
+import { studionet } from 'genlayer-js/chains';
 import { TransactionStatus } from 'genlayer-js/types';
 
-export const PLEDGE_VAULT = '0xD108Cb3c2bF0b619d73a911ac89211DEd5259aEd';
+export const AGENT_ESCROW =
+  import.meta.env.VITE_CONTRACT_ADDRESS || '0x0000000000000000000000000000000000000000';
 
-// Read-only client (reads need no signing).
 const readAccount = createAccount();
+
 export const readClient = createClient({
-  chain: testnetBradbury,
+  chain: studionet,
   account: readAccount,
 });
 
-export async function readVault(functionName, args = []) {
+export async function readEscrow(functionName, args = []) {
   return await readClient.readContract({
-    address: PLEDGE_VAULT,
+    address: AGENT_ESCROW,
     functionName,
     args,
   });
 }
 
-// Build a write client bound to the connected MetaMask address.
 export function makeWriteClient(walletAddress) {
   return createClient({
-    chain: testnetBradbury,
+    chain: studionet,
     account: walletAddress,
   });
 }
