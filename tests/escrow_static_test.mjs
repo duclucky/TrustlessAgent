@@ -11,6 +11,9 @@ assert.ok(fs.existsSync(contractPath), 'contracts/AgentDeliverableEscrow.py must
 const contract = fs.readFileSync(contractPath, 'utf8');
 const frontend = read('frontend/src/App.jsx') + '\n' + read('frontend/src/genlayer.js');
 const readme = read('README.md');
+const deliverablePath = path.join(root, 'frontend', 'public', 'weather-agent-deliverable.txt');
+const lifecycleScriptPath = path.join(root, 'scripts', 'studionet_lifecycle.mjs');
+const evidencePath = path.join(root, 'docs', 'evidence', 'studionet', 'deployment.json');
 
 for (const forbidden of ['DisasterOracle', 'ReliefRegistry', 'PledgeVault', 'disaster', 'relief', 'pledge']) {
   assert.equal(contract.includes(forbidden), false, `contract must not contain old ${forbidden} domain`);
@@ -49,5 +52,23 @@ for (const forbidden of ['PLEDGE_VAULT', 'create_pledge', 'trigger_verification'
 
 assert.ok(readme.includes('buyer') && readme.includes('seller') && readme.includes('escrow funding'), 'README must describe buyer/seller/funding');
 assert.ok(readme.includes('release') && readme.includes('refund'), 'README must describe release/refund workflow');
+
+assert.ok(fs.existsSync(deliverablePath), 'frontend must publish a concrete deliverable evidence artifact');
+const deliverable = fs.readFileSync(deliverablePath, 'utf8');
+for (const phrase of ['WeatherAgent REST Deliverable', 'public endpoint', 'OpenAPI', 'test coverage', 'acceptance criteria']) {
+  assert.ok(deliverable.includes(phrase), `deliverable artifact must include ${phrase}`);
+}
+
+assert.ok(fs.existsSync(lifecycleScriptPath), 'Studionet lifecycle script must exist');
+const lifecycleScript = fs.readFileSync(lifecycleScriptPath, 'utf8');
+for (const phrase of ['safeReceipt', 'open_deal', 'submit_deliverable', 'adjudicate_delivery', 'release_deal', 'claim_refund', 'resumeDealId', 'retries: 120']) {
+  assert.ok(lifecycleScript.includes(phrase), `lifecycle script must include ${phrase}`);
+}
+
+assert.ok(fs.existsSync(evidencePath), 'sanitized Studionet deployment evidence must exist');
+const evidence = fs.readFileSync(evidencePath, 'utf8');
+for (const forbidden of ['private_key', 'node_config', 'mnemonic', 'STUDIONET_PRIVATE_KEY']) {
+  assert.equal(evidence.includes(forbidden), false, `evidence must not contain ${forbidden}`);
+}
 
 console.log('escrow static checks passed');

@@ -82,6 +82,20 @@ npm run check
 
 This runs the repository's static escrow checks and the frontend production build.
 
+## Studionet Evidence
+
+Sanitized lifecycle evidence is stored in `docs/evidence/studionet/deployment.json`. The active contract has two verified value-bearing paths:
+
+- Refund path, `deal-0`: buyer funded `0.01 GEN`, seller submitted `https://example.com`, validator adjudication returned `FAILED`, and `claim_refund` moved the deal to `REFUNDED` with escrow amount `0`.
+- Release path, `deal-1`: buyer funded `0.01 GEN`, seller submitted `https://trustlessagent-omega.vercel.app/weather-agent-deliverable.txt`, validator adjudication returned `DELIVERED`, and `release_deal` moved the deal to `RELEASED` with escrow amount `0`.
+
+Release path transaction hashes:
+
+- open: `0xf9ee662d9bf9a9853c853650ccf5dc2ba40787210eed6183de0c25193894ed81`
+- submit: `0xa0d89a5e1015298089765fce99a730526577680f95c09dc2dd0239c3d1e82f2e`
+- adjudicate: `0x3aa4109cd6ae551b284baea674c84c2e4154bd8c63fda8b7631244772ff917bc`
+- release: `0x725a3784bb870336a9547e39f714578b036ea52707f15f8cdeb8d9cf516205a1`
+
 ## Current Evidence Boundary
 
-This source fixes the architectural mismatch identified by reviewers. The contract is deployed on GenLayer studionet. A funded lifecycle was exercised with buyer `0xC495...7272` and seller `0x45aD...39Db`: `open_deal` funded `0.01 GEN`, `submit_deliverable` moved the deal to `SUBMITTED`, `adjudicate_delivery` judged `example.com` as `FAILED`, and `claim_refund` finalized `REFUNDED` with escrow amount `0`. A successful `DELIVERED` release-to-seller lifecycle remains pending.
+This source fixes the architectural mismatch identified by reviewers. The contract is deployed on GenLayer studionet. Funded lifecycles were exercised with buyer `0xC495...7272` and seller `0x45aD...39Db` for both outcomes: failed evidence refunds the buyer, and delivered evidence releases escrow to the seller. Browser-wallet write evidence is still not claimed; the Studionet lifecycle evidence above is script-signed with the authorized local wallets.

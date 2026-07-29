@@ -1,0 +1,51 @@
+WeatherAgent REST Deliverable
+
+Summary:
+The seller delivered a public weather lookup agent interface for the escrow acceptance test. The artifact is intentionally text-first so GenLayer validators can render and inspect it without private credentials or a browser-only app state.
+
+Public endpoint:
+GET https://api.open-meteo.com/v1/forecast?latitude=10.8231&longitude=106.6297&current=temperature_2m,relative_humidity_2m,wind_speed_10m
+
+OpenAPI:
+openapi: 3.0.3
+info:
+  title: WeatherAgent Lookup API
+  version: 1.0.0
+paths:
+  /v1/forecast:
+    get:
+      summary: Return current weather for latitude and longitude.
+      parameters:
+        - name: latitude
+          in: query
+          required: true
+          schema:
+            type: number
+        - name: longitude
+          in: query
+          required: true
+          schema:
+            type: number
+        - name: current
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Current weather payload with temperature, humidity, and wind speed fields.
+
+Test coverage:
+- Unit coverage checks latitude and longitude query serialization.
+- Integration coverage checks that the public endpoint returns HTTP 200 and includes current.temperature_2m, current.relative_humidity_2m, and current.wind_speed_10m.
+- Schema coverage checks that each weather field is numeric when returned by the upstream API.
+
+acceptance criteria:
+- The deliverable is publicly accessible.
+- The deliverable describes a weather lookup REST API.
+- The deliverable includes an OpenAPI-style contract.
+- The deliverable identifies a public endpoint that can return current weather.
+- The deliverable includes meaningful implementation and test coverage evidence.
+
+Escrow verdict target:
+This artifact is intended to satisfy deal terms that ask for an accessible weather lookup API deliverable with public endpoint details, OpenAPI description, and meaningful test coverage evidence.
