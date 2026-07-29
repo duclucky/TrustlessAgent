@@ -1,5 +1,6 @@
 # v0.2.16
 # { "Depends": "py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6" }
+import time
 from genlayer import *
 
 
@@ -103,6 +104,36 @@ class Contract(gl.Contract):
             return value
         return "INSUFFICIENT"
 
+    def _current_ts(self) -> u256:
+        return u256(int(time.time()))
+
+    def _clamp_confidence(self, raw) -> u256:
+        conf = 0
+        try:
+            conf = int(raw)
+        except Exception:
+            conf = 0
+        if conf < 0:
+            conf = 0
+        if conf > 100:
+            conf = 100
+        return u256(conf)
+
+    def _release_class(self, verdict: str, confidence: u256, meets_terms: bool, evidence_accessible: bool) -> str:
+        if verdict == "DELIVERED" and confidence >= u256(75) and meets_terms and evidence_accessible:
+            return "RELEASE_APPROVED"
+        return "REFUND_APPROVED"
+
+    def _valid_url(self, value: str) -> bool:
+        url = value.strip().lower()
+        if len(url) < 12 or len(url) > 1000:
+            return False
+        if not (url.startswith("https://") or url.startswith("http://")):
+            return False
+        if " " in url or "\t" in url:
+            return False
+        return True
+
     def _transfer_value(self, recipient: Address, amount: u256) -> None:
         if amount == u256(0):
             raise Exception("UserError: no escrow balance")
@@ -114,12 +145,16 @@ class Contract(gl.Contract):
         seller = Address(seller_address)
         if amount == u256(0):
             raise Exception("UserError: escrow funding required")
+        if self._addr_str(seller) == self._addr_str(Address("0x0000000000000000000000000000000000000000")):
+            raise Exception("UserError: seller required")
         if self._addr_str(seller) == self._addr_str(self._sender()):
             raise Exception("UserError: buyer and seller must differ")
         if len(str(terms).strip()) == 0:
             raise Exception("UserError: terms required")
         if len(str(evidence_requirements).strip()) == 0:
             raise Exception("UserError: evidence requirements required")
+        if u256(deadline_ts) <= self._current_ts():
+            raise Exception("UserError: deadline must be in the future")
 
         deal_id = self._deal_id(self.next_id)
         self.next_id = self.next_id + u256(1)
@@ -144,9 +179,18 @@ class Contract(gl.Contract):
         self._require_seller(deal_id)
         if self.status[deal_id] != "FUNDED" and self.status[deal_id] != "SUBMITTED":
             raise Exception("UserError: deal not accepting deliverables")
-        if len(str(deliverable_urls).strip()) == 0:
+        cleaned_urls = []
+        for item in str(deliverable_urls).split("\n"):
+            cleaned = item.strip()
+            if len(cleaned) > 0:
+                if len(cleaned_urls) >= 4:
+                    raise Exception("UserError: too many deliverable URLs")
+                if not self._valid_url(cleaned):
+                    raise Exception("UserError: invalid deliverable URL")
+                cleaned_urls.append(cleaned)
+        if len(cleaned_urls) == 0:
             raise Exception("UserError: deliverable URL required")
-        self.deliverable_urls[deal_id] = str(deliverable_urls)[:3000]
+        self.deliverable_urls[deal_id] = "\n".join(cleaned_urls)
         self.status[deal_id] = "SUBMITTED"
 
     @gl.public.write
@@ -216,30 +260,32 @@ class Contract(gl.Contract):
             except Exception:
                 return False
             theirs = leader_result.calldata
+            theirs_verdict = self._normalize_verdict(str(theirs.get("verdict", "")))
+            mine_verdict = self._normalize_verdict(str(mine.get("verdict", "")))
+            theirs_confidence = self._clamp_confidence(theirs.get("confidence", 0))
+            mine_confidence = self._clamp_confidence(mine.get("confidence", 0))
+            theirs_meets_terms = bool(theirs.get("meets_terms", False))
+            mine_meets_terms = bool(mine.get("meets_terms", False))
+            theirs_accessible = bool(theirs.get("evidence_accessible", False))
+            mine_accessible = bool(mine.get("evidence_accessible", False))
             return (
-                self._normalize_verdict(str(theirs.get("verdict", ""))) == self._normalize_verdict(str(mine.get("verdict", "")))
-                and bool(theirs.get("meets_terms", False)) == bool(mine.get("meets_terms", False))
-                and bool(theirs.get("evidence_accessible", False)) == bool(mine.get("evidence_accessible", False))
+                theirs_verdict == mine_verdict
+                and theirs_meets_terms == mine_meets_terms
+                and theirs_accessible == mine_accessible
+                and self._release_class(theirs_verdict, theirs_confidence, theirs_meets_terms, theirs_accessible)
+                == self._release_class(mine_verdict, mine_confidence, mine_meets_terms, mine_accessible)
             )
 
         result = gl.vm.run_nondet(leader_fn, validator_fn)
         decided = self._normalize_verdict(str(result.get("verdict", "INSUFFICIENT")))
-        conf = 0
-        try:
-            conf = int(result.get("confidence", 0))
-        except Exception:
-            conf = 0
+        conf = self._clamp_confidence(result.get("confidence", 0))
 
         meets_terms = bool(result.get("meets_terms", False))
         evidence_accessible = bool(result.get("evidence_accessible", False))
         self.verdict[deal_id] = decided
-        self.confidence[deal_id] = u256(conf)
+        self.confidence[deal_id] = conf
         self.reason[deal_id] = str(result.get("reason", "No reason provided"))[:1000]
-
-        if decided == "DELIVERED" and conf >= 75 and meets_terms and evidence_accessible:
-            self.status[deal_id] = "RELEASE_APPROVED"
-        else:
-            self.status[deal_id] = "REFUND_APPROVED"
+        self.status[deal_id] = self._release_class(decided, conf, meets_terms, evidence_accessible)
         return self.status[deal_id]
 
     @gl.public.write
@@ -256,7 +302,7 @@ class Contract(gl.Contract):
         return "RELEASED"
 
     @gl.public.write
-    def claim_refund(self, deal_id: str, now_ts: int) -> str:
+    def claim_refund(self, deal_id: str) -> str:
         if not self._exists(deal_id):
             raise Exception("UserError: unknown deal")
         self._require_buyer(deal_id)
@@ -264,7 +310,7 @@ class Contract(gl.Contract):
         if current != "REFUND_APPROVED":
             if current != "FUNDED" and current != "SUBMITTED":
                 raise Exception("UserError: refund not available")
-            if u256(now_ts) < self.deadline_ts[deal_id]:
+            if self._current_ts() < self.deadline_ts[deal_id]:
                 raise Exception("UserError: deadline has not passed")
 
         amount = self.escrow_amount[deal_id]

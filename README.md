@@ -26,9 +26,9 @@ Core lifecycle:
 2. `submit_deliverable(deal_id, deliverable_urls)` lets the seller submit bounded public evidence URLs.
 3. `adjudicate_delivery(deal_id)` runs GenLayer nondeterminism. Validators fetch the deliverable evidence with `gl.nondet.web.render`, ask an LLM for a constrained verdict, and compare consensus-critical meaning: verdict, whether terms are met, and whether evidence is accessible.
 4. `release_deal(deal_id)` pays the seller after a `DELIVERED` verdict with sufficient confidence.
-5. `claim_refund(deal_id, now_ts)` refunds the buyer after a failed/insufficient verdict or after the deadline.
+5. `claim_refund(deal_id)` refunds the buyer after a failed/insufficient verdict or after the contract's deterministic transaction time reaches the deadline.
 
-The payout path uses native GEN value custody through `@gl.public.write.payable`, `gl.message.value`, an internal escrow ledger, and finalized `emit_transfer` messages. Settlement zeroes the stored escrow amount before transfer to prevent double release or double refund.
+The payout path uses native GEN value custody through `@gl.public.write.payable`, `gl.message.value`, an internal escrow ledger, deterministic GenVM transaction time for deadline checks, and finalized `emit_transfer` messages. Settlement zeroes the stored escrow amount before transfer to prevent double release or double refund.
 
 ## State Model
 

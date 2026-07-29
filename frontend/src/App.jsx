@@ -128,7 +128,7 @@ function roleReason(action, deal, wallet) {
   if (action === 'submit' && !['FUNDED', 'SUBMITTED'].includes(deal.status)) return `Submit is unavailable when status is ${deal.status}.`;
   if (action === 'adjudicate' && deal.status !== 'SUBMITTED') return 'Adjudication requires submitted evidence.';
   if (action === 'release' && deal.status !== 'RELEASE_APPROVED') return 'Release requires a DELIVERED validator verdict.';
-  if (action === 'refund' && !canRefund(deal, wallet)) return 'Refund requires REFUND_APPROVED or a missed deadline.';
+  if (action === 'refund' && !canRefund(deal, wallet)) return 'Refund requires REFUND_APPROVED or a deadline already reached by contract time.';
   return '';
 }
 
@@ -353,7 +353,7 @@ export default function App() {
 
   function refund() {
     if (!selectedDeal) return;
-    write('claim_refund', [selectedDeal.id, nowTs()], 'Refund escrow to buyer');
+    write('claim_refund', [selectedDeal.id], 'Refund escrow to buyer');
   }
 
   async function copyText(text, label) {

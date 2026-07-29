@@ -24,7 +24,8 @@ The leader and validators independently render the submitted evidence and run th
 
 - verdict enum: `DELIVERED`, `FAILED`, or `INSUFFICIENT`;
 - whether the deliverable meets the agreed terms;
-- whether evidence is accessible.
+- whether evidence is accessible;
+- whether the normalized verdict, accessibility, terms match, and confidence threshold map to the same release/refund consequence.
 
 Rationale wording is stored for UX and review, but it is not exact-matched.
 
@@ -34,6 +35,7 @@ Rationale wording is stored for UX and review, but it is not exact-matched.
 - Buyer and seller addresses are stored per deal.
 - Only the seller can submit deliverables or release approved escrow.
 - Only the buyer can claim a refund.
+- Deadline refunds use deterministic GenVM transaction time, not a timestamp supplied by the buyer.
 - Settlement sets `escrow_amount[deal_id]` to zero before native GEN transfer.
 - Closed deals cannot be settled twice because `release_deal` and `claim_refund` require approved states.
 

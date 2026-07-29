@@ -40,6 +40,14 @@ assert.ok(contract.includes('gl.message.value'), 'open_deal must custody the cal
 assert.ok(contract.includes('gl.message.sender_address'), 'contract must use sender_address for Address storage');
 assert.equal(contract.includes('gl.message.sender\\n'), false, 'contract must not fall back to string sender for Address storage');
 assert.ok(contract.includes('emit_transfer'), 'release/refund must emit a native GEN transfer');
+assert.ok(contract.includes('import time'), 'contract must use deterministic GenVM transaction time for deadline refunds');
+assert.match(contract, /def claim_refund\(self,\s*deal_id:\s*str\)\s*->\s*str:/, 'claim_refund must not accept caller-supplied timestamps');
+assert.equal(contract.includes('now_ts'), false, 'contract/frontend must not trust caller-supplied now_ts for refund deadlines');
+assert.ok(contract.includes('int(time.time())'), 'claim_refund must derive the current timestamp from GenVM transaction time');
+assert.ok(contract.includes('deadline must be in the future'), 'open_deal must reject already-expired deadlines');
+assert.ok(contract.includes('_valid_url') && contract.includes('too many deliverable URLs'), 'submit_deliverable must bound and validate public URLs');
+assert.ok(contract.includes('_release_class'), 'contract must derive release/refund consequence in deterministic code');
+assert.ok(contract.includes('== self._release_class(mine_verdict, mine_confidence, mine_meets_terms, mine_accessible)'), 'validator equivalence must compare the consequence class affected by confidence threshold');
 assert.ok(contract.includes('DELIVERED') && contract.includes('FAILED') && contract.includes('INSUFFICIENT'), 'verdict enum must cover delivered/failed/insufficient');
 assert.ok(contract.includes('validator_fn') && contract.includes('leader_fn'), 'adjudication must use leader/validator nondet consensus');
 
@@ -71,6 +79,7 @@ for (const required of ['.app-shell', '.sidebar', '.metric-grid', '.deal-console
 for (const forbidden of ['142', 'DEAL-892A', '0.5 ETH', 'Force Refund', 'TechCorp Inc.']) {
   assert.equal(frontend.includes(forbidden), false, `frontend must not ship Stitch mock data: ${forbidden}`);
 }
+assert.equal(frontend.includes('claim_refund\', [selectedDeal.id, nowTs()]'), false, 'frontend must not pass a caller timestamp to claim_refund');
 
 for (const forbidden of ['PLEDGE_VAULT', 'create_pledge', 'trigger_verification', 'set_trusted_org']) {
   assert.equal(frontend.includes(forbidden), false, `frontend must not use old ${forbidden} API`);
@@ -90,6 +99,8 @@ const lifecycleScript = fs.readFileSync(lifecycleScriptPath, 'utf8');
 for (const phrase of ['safeReceipt', 'open_deal', 'submit_deliverable', 'adjudicate_delivery', 'release_deal', 'claim_refund', 'resumeDealId', 'retries: 120']) {
   assert.ok(lifecycleScript.includes(phrase), `lifecycle script must include ${phrase}`);
 }
+assert.ok(lifecycleScript.includes("'claim_refund', [dealId]"), 'lifecycle script must call claim_refund without a timestamp argument');
+assert.equal(lifecycleScript.includes('claim_refund\', [dealId, Math.floor(Date.now()'), false, 'lifecycle script must not pass local wall-clock time to claim_refund');
 
 assert.ok(fs.existsSync(evidencePath), 'sanitized Studionet deployment evidence must exist');
 const evidence = fs.readFileSync(evidencePath, 'utf8');

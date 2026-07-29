@@ -238,7 +238,7 @@ async function runRefundPath() {
     throw new Error(`refund path did not reach REFUND_APPROVED: ${JSON.stringify(steps.adjudicate.stateAccepted)}`);
   }
 
-  steps.refund = await writeStep(buyerClient, 'claim_refund', [dealId, Math.floor(Date.now() / 1000)]);
+  steps.refund = await writeStep(buyerClient, 'claim_refund', [dealId]);
   steps.refund.stateAccepted = await readDeal(dealId, 'accepted');
 
   evidence.lifecycles.refundToBuyerLatest = {
