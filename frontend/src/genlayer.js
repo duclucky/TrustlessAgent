@@ -12,11 +12,15 @@ export const readClient = createClient({
   account: readAccount,
 });
 
-export async function readEscrow(functionName, args = []) {
+export const STUDIONET_CHAIN = studionet;
+export const STUDIONET_CHAIN_ID = studionet.id;
+
+export async function readEscrow(functionName, args = [], stateStatus = 'accepted') {
   return await readClient.readContract({
     address: AGENT_ESCROW,
     functionName,
     args,
+    stateStatus,
   });
 }
 

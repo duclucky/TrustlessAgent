@@ -10,6 +10,7 @@ assert.ok(fs.existsSync(contractPath), 'contracts/AgentDeliverableEscrow.py must
 
 const contract = fs.readFileSync(contractPath, 'utf8');
 const frontend = read('frontend/src/App.jsx') + '\n' + read('frontend/src/genlayer.js');
+const appCssPath = path.join(root, 'frontend', 'src', 'App.css');
 const readme = read('README.md');
 const deliverablePath = path.join(root, 'frontend', 'public', 'weather-agent-deliverable.txt');
 const lifecycleScriptPath = path.join(root, 'scripts', 'studionet_lifecycle.mjs');
@@ -44,6 +45,31 @@ assert.ok(contract.includes('validator_fn') && contract.includes('leader_fn'), '
 
 for (const required of ['open_deal', 'submit_deliverable', 'adjudicate_delivery', 'release_deal', 'claim_refund', 'get_deal']) {
   assert.ok(frontend.includes(required), `frontend must call/read ${required}`);
+}
+
+for (const required of [
+  'wallet_switchEthereumChain',
+  'wallet_addEthereumChain',
+  'studionet.id',
+  'TransactionStatus.FINALIZED',
+  'Recent wallet activity',
+  'Canonical state from GenLayer',
+  'roleReason',
+  'canRelease',
+  'canRefund',
+  'Trust Boundary',
+]) {
+  assert.ok(frontend.includes(required), `frontend must include Projects-track UI behavior: ${required}`);
+}
+
+assert.ok(fs.existsSync(appCssPath), 'frontend must have a dedicated polished app stylesheet');
+const appCss = fs.readFileSync(appCssPath, 'utf8');
+for (const required of ['.app-shell', '.sidebar', '.metric-grid', '.deal-console', '.timeline', '@media (max-width: 760px)', 'prefers-reduced-motion']) {
+  assert.ok(appCss.includes(required), `App.css must include ${required}`);
+}
+
+for (const forbidden of ['142', 'DEAL-892A', '0.5 ETH', 'Force Refund', 'TechCorp Inc.']) {
+  assert.equal(frontend.includes(forbidden), false, `frontend must not ship Stitch mock data: ${forbidden}`);
 }
 
 for (const forbidden of ['PLEDGE_VAULT', 'create_pledge', 'trigger_verification', 'set_trusted_org']) {

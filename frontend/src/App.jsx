@@ -1,29 +1,58 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AGENT_ESCROW, makeWriteClient, readEscrow, TransactionStatus } from './genlayer.js';
+import {
+  Activity,
+  AlertTriangle,
+  ArrowUpRight,
+  CheckCircle2,
+  Clipboard,
+  Copy,
+  ExternalLink,
+  FileText,
+  Gavel,
+  HandCoins,
+  History,
+  Lock,
+  Network,
+  RefreshCw,
+  RotateCcw,
+  Search,
+  Send,
+  Settings,
+  ShieldCheck,
+  Upload,
+  Wallet,
+  XCircle,
+} from 'lucide-react';
+import { AGENT_ESCROW, makeWriteClient, readEscrow, STUDIONET_CHAIN, TransactionStatus } from './genlayer.js';
+import './App.css';
 
-const TERMS =
+const DEFAULT_TERMS =
   'Seller agent must deliver a working REST API for weather lookups with a public endpoint, an OpenAPI description, and evidence of meaningful test coverage.';
-const REQUIREMENTS =
+const DEFAULT_REQUIREMENTS =
   'Validators inspect the submitted URL content and decide whether the deliverable is accessible, matches the agreed API scope, and provides enough implementation evidence.';
+const DEFAULT_DELIVERABLE = 'https://trustlessagent-omega.vercel.app/weather-agent-deliverable.txt';
 
-const C = {
-  bg: '#f7f5f1',
-  panel: '#ffffff',
-  ink: '#202124',
-  sub: '#62666d',
-  line: '#d8dce2',
-  blue: '#265fdd',
-  blueSoft: '#e8efff',
-  green: '#16794c',
-  red: '#aa2e25',
-  amber: '#9a6700',
-};
+const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
+const EXPLORER = 'https://genlayer-explorer.vercel.app';
+const TABS = ['Dashboard', 'Escrow Deals', 'Adjudication', 'Settings'];
 
 function weiFromGen(value) {
   const clean = String(value || '0').trim();
+  if (!/^\d+(\.\d{0,18})?$/.test(clean)) return 0n;
   const [whole, frac = ''] = clean.split('.');
   const padded = (frac + '000000000000000000').slice(0, 18);
   return BigInt(whole || '0') * 10n ** 18n + BigInt(padded || '0');
+}
+
+function formatGen(wei) {
+  try {
+    const value = BigInt(String(wei || '0'));
+    const whole = value / 10n ** 18n;
+    const fraction = (value % 10n ** 18n).toString().padStart(18, '0').slice(0, 4).replace(/0+$/, '');
+    return fraction ? `${whole}.${fraction} GEN` : `${whole} GEN`;
+  } catch {
+    return '0 GEN';
+  }
 }
 
 function parseDeal(raw) {
@@ -36,56 +65,178 @@ function parseDeal(raw) {
     buyer: parts[4] || '',
     seller: parts[5] || '',
     deadline: parts[6] || '',
+    terms: '',
+    deliverable: '',
+    reason: '',
   };
 }
 
-function statusColor(status) {
-  if (status === 'RELEASED' || status === 'RELEASE_APPROVED') return C.green;
-  if (status === 'REFUNDED' || status === 'REFUND_APPROVED') return C.red;
-  if (status === 'SUBMITTED') return C.amber;
-  return C.blue;
+function shortAddress(address) {
+  if (!address) return 'not connected';
+  return `${address.slice(0, 6)}...${address.slice(-4)}`;
+}
+
+function explorerTxUrl(hash) {
+  return `${EXPLORER}/tx/${hash}`;
+}
+
+function explorerAddressUrl(address) {
+  return `${EXPLORER}/address/${address}`;
+}
+
+function sameAddress(a, b) {
+  return String(a || '').toLowerCase() === String(b || '').toLowerCase();
+}
+
+function nowTs() {
+  return Math.floor(Date.now() / 1000);
+}
+
+function isBuyer(deal, wallet) {
+  return wallet && sameAddress(deal?.buyer, wallet);
+}
+
+function isSeller(deal, wallet) {
+  return wallet && sameAddress(deal?.seller, wallet);
+}
+
+function canSubmit(deal, wallet) {
+  return !!deal?.id && isSeller(deal, wallet) && ['FUNDED', 'SUBMITTED'].includes(deal.status);
+}
+
+function canAdjudicate(deal, wallet) {
+  return !!deal?.id && (isBuyer(deal, wallet) || isSeller(deal, wallet)) && deal.status === 'SUBMITTED';
+}
+
+function canRelease(deal, wallet) {
+  return !!deal?.id && isSeller(deal, wallet) && deal.status === 'RELEASE_APPROVED';
+}
+
+function canRefund(deal, wallet) {
+  if (!deal?.id || !isBuyer(deal, wallet)) return false;
+  if (deal.status === 'REFUND_APPROVED') return true;
+  return ['FUNDED', 'SUBMITTED'].includes(deal.status) && Number(deal.deadline || 0) <= nowTs();
+}
+
+function roleReason(action, deal, wallet) {
+  if (!wallet) return 'Connect a funded studionet wallet first.';
+  if (!deal?.id) return 'Select a canonical deal first.';
+  if (action === 'submit' && !isSeller(deal, wallet)) return 'Only the seller can submit deliverable evidence.';
+  if (action === 'adjudicate' && !isSeller(deal, wallet) && !isBuyer(deal, wallet)) return 'Only deal parties can request adjudication.';
+  if (action === 'release' && !isSeller(deal, wallet)) return 'Only the seller can release approved escrow.';
+  if (action === 'refund' && !isBuyer(deal, wallet)) return 'Only the buyer can claim a refund.';
+  if (action === 'submit' && !['FUNDED', 'SUBMITTED'].includes(deal.status)) return `Submit is unavailable when status is ${deal.status}.`;
+  if (action === 'adjudicate' && deal.status !== 'SUBMITTED') return 'Adjudication requires submitted evidence.';
+  if (action === 'release' && deal.status !== 'RELEASE_APPROVED') return 'Release requires a DELIVERED validator verdict.';
+  if (action === 'refund' && !canRefund(deal, wallet)) return 'Refund requires REFUND_APPROVED or a missed deadline.';
+  return '';
+}
+
+function statusTone(status) {
+  if (['RELEASED', 'RELEASE_APPROVED'].includes(status)) return 'success';
+  if (['REFUNDED', 'REFUND_APPROVED'].includes(status)) return 'danger';
+  if (status === 'SUBMITTED') return 'warning';
+  return 'primary';
+}
+
+function verdictTone(verdict) {
+  if (verdict === 'DELIVERED') return 'success';
+  if (verdict === 'FAILED') return 'danger';
+  if (verdict === 'INSUFFICIENT') return 'warning';
+  return 'neutral';
+}
+
+function activeStep(status) {
+  if (status === 'FUNDED') return 1;
+  if (status === 'SUBMITTED') return 2;
+  if (status === 'RELEASE_APPROVED' || status === 'REFUND_APPROVED') return 3;
+  if (status === 'RELEASED' || status === 'REFUNDED') return 4;
+  return 0;
+}
+
+function ActionButton({ icon: Icon, label, onClick, disabled, reason, tone = 'secondary', busy }) {
+  return (
+    <div className="action-wrap">
+      <button className={`btn ${tone}`} onClick={onClick} disabled={disabled || busy} title={disabled ? reason : label}>
+        <Icon size={16} />
+        <span>{busy ? 'Working...' : label}</span>
+      </button>
+      {disabled && reason && <span className="disabled-reason">{reason}</span>}
+    </div>
+  );
 }
 
 export default function App() {
   const [wallet, setWallet] = useState('');
+  const [activeTab, setActiveTab] = useState('Dashboard');
   const [deals, setDeals] = useState([]);
-  const [selectedDeal, setSelectedDeal] = useState('deal-0');
+  const [selectedDealId, setSelectedDealId] = useState('');
+  const [query, setQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('ALL');
   const [seller, setSeller] = useState('');
-  const [amount, setAmount] = useState('0.1');
-  const [terms, setTerms] = useState(TERMS);
-  const [requirements, setRequirements] = useState(REQUIREMENTS);
+  const [amount, setAmount] = useState('0.01');
   const [deadline, setDeadline] = useState('9999999999');
-  const [deliverableUrl, setDeliverableUrl] = useState('https://example.com');
+  const [terms, setTerms] = useState(DEFAULT_TERMS);
+  const [requirements, setRequirements] = useState(DEFAULT_REQUIREMENTS);
+  const [deliverableUrl, setDeliverableUrl] = useState(DEFAULT_DELIVERABLE);
   const [busy, setBusy] = useState('');
-  const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [activity, setActivity] = useState([]);
 
-  const contractReady = useMemo(() => !AGENT_ESCROW.endsWith('0000000000000000000000000000000000000000'), []);
+  const contractReady = AGENT_ESCROW && AGENT_ESCROW !== ZERO_ADDRESS;
+  const selectedDeal = deals.find((deal) => deal.id === selectedDealId) || deals[0] || null;
 
-  async function connectWallet() {
-    setError('');
-    if (!window.ethereum) {
-      setError('MetaMask is required for write transactions.');
-      return;
-    }
-    const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-    setWallet(accounts[0]);
-  }
+  const metrics = useMemo(() => {
+    const active = deals.filter((deal) => ['FUNDED', 'SUBMITTED'].includes(deal.status)).length;
+    const releaseApproved = deals.filter((deal) => deal.status === 'RELEASE_APPROVED').length;
+    const refundApproved = deals.filter((deal) => deal.status === 'REFUND_APPROVED').length;
+    const closed = deals.filter((deal) => ['RELEASED', 'REFUNDED'].includes(deal.status)).length;
+    return { total: deals.length, active, releaseApproved, refundApproved, closed };
+  }, [deals]);
 
-  async function refreshDeals() {
+  const filteredDeals = useMemo(() => {
+    const normalized = query.trim().toLowerCase();
+    return deals.filter((deal) => {
+      const matchesQuery =
+        !normalized ||
+        deal.id.toLowerCase().includes(normalized) ||
+        deal.buyer.toLowerCase().includes(normalized) ||
+        deal.seller.toLowerCase().includes(normalized);
+      const matchesStatus = statusFilter === 'ALL' || deal.status === statusFilter;
+      return matchesQuery && matchesStatus;
+    });
+  }, [deals, query, statusFilter]);
+
+  async function refreshDeals(preferredDealId = selectedDealId) {
     setError('');
     try {
       const count = Number(await readEscrow('get_deal_count', []));
       const next = [];
       for (let i = 0; i < count; i += 1) {
         const id = `deal-${i}`;
-        const deal = parseDeal(await readEscrow('get_deal', [id]));
-        const reason = String(await readEscrow('get_reason', [id]));
-        next.push({ ...deal, reason });
+        const [dealRaw, dealTerms, deliverable, reason] = await Promise.all([
+          readEscrow('get_deal', [id]),
+          readEscrow('get_terms', [id]),
+          readEscrow('get_deliverable', [id]),
+          readEscrow('get_reason', [id]),
+        ]);
+        next.push({
+          ...parseDeal(dealRaw),
+          terms: String(dealTerms || ''),
+          deliverable: String(deliverable || ''),
+          reason: String(reason || ''),
+        });
       }
-      setDeals(next.reverse());
+      const ordered = next.reverse();
+      setDeals(ordered);
+      if (preferredDealId && next.some((deal) => deal.id === preferredDealId)) {
+        setSelectedDealId(preferredDealId);
+      } else if (ordered[0]) {
+        setSelectedDealId(ordered[0].id);
+      }
     } catch (e) {
-      setError(String(e?.message || e));
+      setError(`Unable to read canonical state: ${e?.message || e}`);
     }
   }
 
@@ -93,174 +244,459 @@ export default function App() {
     refreshDeals();
   }, []);
 
-  async function write(functionName, args, label, value = 0n) {
+  async function connectWallet() {
+    setError('');
+    setNotice('');
+    if (!window.ethereum) {
+      setError('MetaMask or another injected wallet is required for browser write transactions.');
+      return;
+    }
+    try {
+      const chainId = `0x${STUDIONET_CHAIN.id.toString(16)}`;
+      try {
+        await window.ethereum.request({
+          method: 'wallet_switchEthereumChain',
+          params: [{ chainId }],
+        });
+      } catch (switchError) {
+        if (switchError?.code !== 4902 && switchError?.code !== -32603) throw switchError;
+        await window.ethereum.request({
+          method: 'wallet_addEthereumChain',
+          params: [
+            {
+              chainId,
+              chainName: STUDIONET_CHAIN.name || 'GenLayer Studionet',
+              nativeCurrency: STUDIONET_CHAIN.nativeCurrency || { name: 'GEN', symbol: 'GEN', decimals: 18 },
+              rpcUrls: STUDIONET_CHAIN.rpcUrls?.default?.http || ['https://studio.genlayer.com/api'],
+              blockExplorerUrls: [EXPLORER],
+            },
+          ],
+        });
+      }
+      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+      setWallet(accounts[0]);
+      setNotice('Wallet connected on GenLayer studionet. Canonical state from GenLayer is ready to refresh.');
+    } catch (e) {
+      setError(`Wallet connection failed: ${e?.message || e}`);
+    }
+  }
+
+  function pushActivity(entry) {
+    setActivity((items) => [{ time: new Date().toLocaleTimeString(), ...entry }, ...items].slice(0, 8));
+  }
+
+  async function write(functionName, args, label, value = 0n, waitStatus = TransactionStatus.ACCEPTED) {
     if (!wallet) {
       setError('Connect a funded studionet wallet first.');
-      return;
+      return null;
     }
     setBusy(label);
     setError('');
-    setMessage('');
+    setNotice('');
     try {
       const client = makeWriteClient(wallet);
-      const hash = await client.writeContract({
-        address: AGENT_ESCROW,
-        functionName,
-        args,
-        value,
+      const hash = await client.writeContract({ address: AGENT_ESCROW, functionName, args, value });
+      pushActivity({ label, method: functionName, hash, status: 'Submitted', dealId: args[0] || 'new' });
+      const receipt = await client.waitForTransactionReceipt({
+        hash,
+        status: waitStatus,
+        interval: 5000,
+        retries: 120,
       });
-      await client.waitForTransactionReceipt({ hash, status: TransactionStatus.ACCEPTED });
-      setMessage(`Transaction accepted: ${hash}`);
-      await refreshDeals();
+      const finalLabel = waitStatus === TransactionStatus.FINALIZED ? 'Finalized' : 'Accepted';
+      pushActivity({ label, method: functionName, hash, status: finalLabel, dealId: args[0] || 'new' });
+      setNotice(`${label} ${finalLabel.toLowerCase()}: ${hash}`);
+      await refreshDeals(args[0]);
+      return receipt;
     } catch (e) {
-      setError(String(e?.message || e));
+      pushActivity({ label, method: functionName, hash: '', status: 'Failed', dealId: args[0] || 'new' });
+      setError(`${label} failed: ${e?.message || e}`);
+      return null;
     } finally {
       setBusy('');
     }
   }
 
-  function openDeal() {
-    write('open_deal', [seller, terms, requirements, Number(deadline)], 'Opening funded escrow', weiFromGen(amount));
+  async function openDeal() {
+    const value = weiFromGen(amount);
+    if (!/^0x[a-fA-F0-9]{40}$/.test(seller.trim())) {
+      setError('Seller address must be a valid 0x address.');
+      return;
+    }
+    if (value <= 0n) {
+      setError('Funding amount must be greater than 0 GEN.');
+      return;
+    }
+    if (!terms.trim() || !requirements.trim()) {
+      setError('Terms and evidence requirements are required.');
+      return;
+    }
+    const before = deals.length;
+    await write('open_deal', [seller.trim(), terms.trim(), requirements.trim(), Number(deadline)], 'Open funded escrow', value);
+    await refreshDeals(`deal-${before}`);
   }
 
   function submitDeliverable() {
-    write('submit_deliverable', [selectedDeal, deliverableUrl], 'Submitting deliverable evidence');
+    if (!selectedDeal) return;
+    write('submit_deliverable', [selectedDeal.id, deliverableUrl.trim()], 'Submit deliverable evidence');
   }
 
   function adjudicate() {
-    write('adjudicate_delivery', [selectedDeal], 'Waiting for validator adjudication');
+    if (!selectedDeal) return;
+    write('adjudicate_delivery', [selectedDeal.id], 'Waiting for validator consensus', 0n, TransactionStatus.FINALIZED);
   }
 
   function release() {
-    write('release_deal', [selectedDeal], 'Releasing escrow to seller');
+    if (!selectedDeal) return;
+    write('release_deal', [selectedDeal.id], 'Release escrow to seller');
   }
 
   function refund() {
-    const nowTs = Math.floor(Date.now() / 1000);
-    write('claim_refund', [selectedDeal, nowTs], 'Refunding escrow to buyer');
+    if (!selectedDeal) return;
+    write('claim_refund', [selectedDeal.id, nowTs()], 'Refund escrow to buyer');
   }
 
-  const input = {
-    width: '100%',
-    border: `1px solid ${C.line}`,
-    borderRadius: 6,
-    padding: '10px 12px',
-    font: 'inherit',
-    color: C.ink,
-    boxSizing: 'border-box',
-  };
-  const label = { display: 'block', marginBottom: 6, color: C.sub, fontSize: 13, fontWeight: 600 };
-  const button = (primary = false) => ({
-    border: `1px solid ${primary ? C.blue : C.line}`,
-    borderRadius: 6,
-    padding: '10px 14px',
-    background: primary ? C.blue : '#fff',
-    color: primary ? '#fff' : C.ink,
-    fontWeight: 700,
-    cursor: busy ? 'wait' : 'pointer',
-  });
+  async function copyText(text, label) {
+    await navigator.clipboard?.writeText(text);
+    setNotice(`${label} copied.`);
+  }
+
+  const step = activeStep(selectedDeal?.status);
 
   return (
-    <main style={{ minHeight: '100vh', background: C.bg, color: C.ink, fontFamily: 'Inter, Segoe UI, system-ui, sans-serif' }}>
-      <div style={{ maxWidth: 1180, margin: '0 auto', padding: '24px' }}>
-        <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+    <div className="app-shell">
+      <aside className="sidebar">
+        <div className="brand">
+          <div className="brand-mark"><ShieldCheck size={18} /></div>
           <div>
-            <h1 style={{ margin: 0, fontSize: 28, letterSpacing: 0 }}>TrustlessAgent</h1>
-            <div style={{ color: C.sub, marginTop: 4 }}>Agent deliverable escrow on GenLayer studionet</div>
+            <strong>TrustlessAgent</strong>
+            <span>Agent escrow console</span>
           </div>
-          <button style={button(true)} onClick={wallet ? refreshDeals : connectWallet}>
-            {wallet ? `${wallet.slice(0, 6)}...${wallet.slice(-4)}` : 'Connect Wallet'}
-          </button>
+        </div>
+        <nav aria-label="Workspace navigation">
+          {TABS.map((tab) => {
+            const Icon = tab === 'Dashboard' ? Activity : tab === 'Escrow Deals' ? HandCoins : tab === 'Adjudication' ? Gavel : Settings;
+            return (
+              <button key={tab} className={activeTab === tab ? 'nav-item active' : 'nav-item'} onClick={() => setActiveTab(tab)}>
+                <Icon size={18} />
+                <span>{tab}</span>
+              </button>
+            );
+          })}
+        </nav>
+        <div className="sidebar-note">
+          <span>Trust Boundary</span>
+          <p>Validators inspect submitted public evidence. This browser does not decide the verdict.</p>
+        </div>
+      </aside>
+
+      <main className="workspace">
+        <header className="topbar">
+          <div>
+            <p className="eyebrow">Canonical state from GenLayer</p>
+            <h1>{activeTab}</h1>
+          </div>
+          <div className="top-actions">
+            <a className="contract-pill" href={explorerAddressUrl(AGENT_ESCROW)} target="_blank" rel="noreferrer">
+              <Network size={15} />
+              <span>{shortAddress(AGENT_ESCROW)}</span>
+              <ExternalLink size={14} />
+            </a>
+            <button className="icon-btn" onClick={() => copyText(AGENT_ESCROW, 'Contract address')} aria-label="Copy contract address">
+              <Copy size={17} />
+            </button>
+            <button className="icon-btn" onClick={() => refreshDeals()} aria-label="Refresh canonical state" disabled={!!busy}>
+              <RefreshCw size={17} />
+            </button>
+            <button className="btn primary" onClick={wallet ? () => refreshDeals() : connectWallet}>
+              <Wallet size={16} />
+              <span>{wallet ? shortAddress(wallet) : 'Connect Wallet'}</span>
+            </button>
+          </div>
         </header>
 
         {!contractReady && (
-          <div style={{ border: `1px solid ${C.line}`, borderRadius: 6, padding: 12, background: C.blueSoft, marginBottom: 16 }}>
-            Set VITE_CONTRACT_ADDRESS after deploying AgentDeliverableEscrow.
+          <div className="banner warning">
+            <AlertTriangle size={18} />
+            <span>Set VITE_CONTRACT_ADDRESS to the deployed AgentDeliverableEscrow address.</span>
           </div>
         )}
-        {message && <div style={{ border: `1px solid ${C.line}`, borderRadius: 6, padding: 12, background: '#eef8f2', color: C.green, marginBottom: 16 }}>{message}</div>}
-        {error && <div style={{ border: `1px solid ${C.line}`, borderRadius: 6, padding: 12, background: '#fff0ee', color: C.red, marginBottom: 16, whiteSpace: 'pre-wrap' }}>{error}</div>}
-        {busy && <div style={{ border: `1px solid ${C.line}`, borderRadius: 6, padding: 12, background: '#fff8e6', color: C.amber, marginBottom: 16 }}>{busy}</div>}
+        {notice && <div className="banner success" aria-live="polite"><CheckCircle2 size={18} /><span>{notice}</span></div>}
+        {error && <div className="banner danger" role="alert"><XCircle size={18} /><span>{error}</span></div>}
+        {busy && <div className="banner progress" aria-live="polite"><RefreshCw className="spin" size={18} /><span>{busy}</span></div>}
 
-        <section style={{ display: 'grid', gridTemplateColumns: 'minmax(320px, 430px) 1fr', gap: 18, alignItems: 'start' }}>
-          <div style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 8, padding: 18 }}>
-            <h2 style={{ fontSize: 18, margin: '0 0 14px' }}>Open Funded Escrow</h2>
-            <div style={{ display: 'grid', gap: 12 }}>
-              <div>
-                <label style={label}>Seller address</label>
-                <input style={input} value={seller} onChange={(e) => setSeller(e.target.value)} placeholder="0x..." />
-              </div>
-              <div>
-                <label style={label}>Funding amount in GEN</label>
-                <input style={input} value={amount} onChange={(e) => setAmount(e.target.value)} />
-              </div>
-              <div>
-                <label style={label}>Deliverable terms</label>
-                <textarea style={{ ...input, minHeight: 96, resize: 'vertical' }} value={terms} onChange={(e) => setTerms(e.target.value)} />
-              </div>
-              <div>
-                <label style={label}>Evidence requirements</label>
-                <textarea style={{ ...input, minHeight: 72, resize: 'vertical' }} value={requirements} onChange={(e) => setRequirements(e.target.value)} />
-              </div>
-              <div>
-                <label style={label}>Refund deadline timestamp</label>
-                <input style={input} value={deadline} onChange={(e) => setDeadline(e.target.value)} />
-              </div>
-              <button style={button(true)} onClick={openDeal} disabled={!!busy}>Open Escrow</button>
-            </div>
-          </div>
+        <section className="metric-grid" aria-label="Escrow metrics">
+          <Metric label="Total deals" value={metrics.total} />
+          <Metric label="Active funded/submitted" value={metrics.active} tone="primary" />
+          <Metric label="Release approved" value={metrics.releaseApproved} tone="success" />
+          <Metric label="Refund approved" value={metrics.refundApproved} tone="danger" />
+          <Metric label="Closed" value={metrics.closed} tone="neutral" />
+        </section>
 
-          <div style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 8, padding: 18 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', marginBottom: 14 }}>
-              <h2 style={{ fontSize: 18, margin: 0 }}>Deal Workflow</h2>
-              <button style={button()} onClick={refreshDeals} disabled={!!busy}>Refresh</button>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+        <section className="layout-grid">
+          <CreateEscrow
+            seller={seller}
+            setSeller={setSeller}
+            amount={amount}
+            setAmount={setAmount}
+            deadline={deadline}
+            setDeadline={setDeadline}
+            terms={terms}
+            setTerms={setTerms}
+            requirements={requirements}
+            setRequirements={setRequirements}
+            openDeal={openDeal}
+            busy={busy}
+          />
+
+          <section className="panel deal-console">
+            <div className="panel-head split">
               <div>
-                <label style={label}>Deal ID</label>
-                <input style={input} value={selectedDeal} onChange={(e) => setSelectedDeal(e.target.value)} />
+                <h2>Deal Console</h2>
+                <p>Operate the selected escrow from canonical contract state.</p>
               </div>
-              <div>
-                <label style={label}>Deliverable URL</label>
-                <input style={input} value={deliverableUrl} onChange={(e) => setDeliverableUrl(e.target.value)} />
+              <div className="deal-search">
+                <Search size={16} />
+                <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search deal or address" />
               </div>
-            </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 18 }}>
-              <button style={button()} onClick={submitDeliverable} disabled={!!busy}>Submit Deliverable</button>
-              <button style={button(true)} onClick={adjudicate} disabled={!!busy}>Adjudicate</button>
-              <button style={button()} onClick={release} disabled={!!busy}>Release</button>
-              <button style={button()} onClick={refund} disabled={!!busy}>Refund</button>
             </div>
 
-            <div style={{ display: 'grid', gap: 10 }}>
-              {deals.length === 0 && <div style={{ color: C.sub, padding: '20px 0', textAlign: 'center' }}>No canonical deals found.</div>}
-              {deals.map((deal) => (
-                <button
-                  key={deal.id}
-                  onClick={() => setSelectedDeal(deal.id)}
-                  style={{
-                    textAlign: 'left',
-                    border: `1px solid ${selectedDeal === deal.id ? C.blue : C.line}`,
-                    borderRadius: 8,
-                    padding: 14,
-                    background: selectedDeal === deal.id ? C.blueSoft : '#fff',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
-                    <strong>{deal.id}</strong>
-                    <span style={{ color: statusColor(deal.status), fontWeight: 800 }}>{deal.status || 'UNKNOWN'}</span>
+            {selectedDeal ? (
+              <>
+                <div className="deal-summary">
+                  <div>
+                    <div className="row-tight">
+                      <span className="mono strong">{selectedDeal.id}</span>
+                      <Badge tone={statusTone(selectedDeal.status)}>{selectedDeal.status || 'UNKNOWN'}</Badge>
+                      <Badge tone={verdictTone(selectedDeal.verdict)}>{selectedDeal.verdict || 'NONE'}</Badge>
+                    </div>
+                    <strong className="amount">{formatGen(selectedDeal.amount)}</strong>
                   </div>
-                  <div style={{ color: C.sub, fontSize: 13 }}>Verdict: {deal.verdict || 'NONE'} | Escrow wei: {deal.amount}</div>
-                  <div style={{ color: C.sub, fontSize: 13, marginTop: 4 }}>Buyer: {deal.buyer || 'unknown'}</div>
-                  <div style={{ color: C.sub, fontSize: 13 }}>Seller: {deal.seller || 'unknown'}</div>
-                  {deal.reason && <div style={{ color: C.ink, fontSize: 13, marginTop: 8 }}>{deal.reason}</div>}
-                </button>
-              ))}
+                  <div className="party-stack">
+                    <span>Buyer <b className="mono">{shortAddress(selectedDeal.buyer)}</b></span>
+                    <span>Seller <b className="mono">{shortAddress(selectedDeal.seller)}</b></span>
+                    <span>Deadline <b className="mono">{selectedDeal.deadline}</b></span>
+                  </div>
+                </div>
+
+                <div className="timeline" aria-label="Deal lifecycle">
+                  {['Funded', 'Submitted', 'Adjudicated', selectedDeal.status === 'REFUNDED' ? 'Refunded' : 'Released'].map((label, index) => (
+                    <div key={label} className={index + 1 <= step ? 'timeline-step done' : 'timeline-step'}>
+                      <span>{index + 1}</span>
+                      <p>{label}</p>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="details-grid">
+                  <DetailCard icon={FileText} title="Terms" body={selectedDeal.terms || 'No terms read from contract.'} />
+                  <DetailCard icon={Upload} title="Deliverable evidence" body={selectedDeal.deliverable || 'No deliverable submitted yet.'} link={selectedDeal.deliverable} />
+                  <DetailCard icon={Gavel} title="Validator reason" body={selectedDeal.reason || 'No validator reason yet.'} emphasis />
+                </div>
+
+                <div className="submit-inline">
+                  <label htmlFor="deliverable">Deliverable URL</label>
+                  <div>
+                    <input id="deliverable" value={deliverableUrl} onChange={(e) => setDeliverableUrl(e.target.value)} />
+                    <button className="btn secondary" type="button" onClick={() => setDeliverableUrl(DEFAULT_DELIVERABLE)}>
+                      Use verified sample
+                    </button>
+                  </div>
+                </div>
+
+                <div className="action-bar">
+                  <ActionButton icon={Upload} label="Submit" onClick={submitDeliverable} disabled={!canSubmit(selectedDeal, wallet)} reason={roleReason('submit', selectedDeal, wallet)} busy={busy === 'Submit deliverable evidence'} />
+                  <ActionButton icon={Gavel} label="Adjudicate" onClick={adjudicate} disabled={!canAdjudicate(selectedDeal, wallet)} reason={roleReason('adjudicate', selectedDeal, wallet)} busy={busy === 'Waiting for validator consensus'} tone="primary" />
+                  <ActionButton icon={Send} label="Release" onClick={release} disabled={!canRelease(selectedDeal, wallet)} reason={roleReason('release', selectedDeal, wallet)} busy={busy === 'Release escrow to seller'} tone="success" />
+                  <ActionButton icon={RotateCcw} label="Refund" onClick={refund} disabled={!canRefund(selectedDeal, wallet)} reason={roleReason('refund', selectedDeal, wallet)} busy={busy === 'Refund escrow to buyer'} tone="danger" />
+                </div>
+              </>
+            ) : (
+              <EmptyWorkflow
+                wallet={wallet}
+                refreshDeals={refreshDeals}
+                connectWallet={connectWallet}
+              />
+            )}
+          </section>
+        </section>
+
+        <section className="panel deal-inventory">
+          <div className="panel-head split">
+            <div>
+              <h2>Escrow Deals</h2>
+              <p>Every row is read from `get_deal` and related views.</p>
             </div>
+            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+              <option value="ALL">All statuses</option>
+              <option value="FUNDED">FUNDED</option>
+              <option value="SUBMITTED">SUBMITTED</option>
+              <option value="RELEASE_APPROVED">RELEASE_APPROVED</option>
+              <option value="REFUND_APPROVED">REFUND_APPROVED</option>
+              <option value="RELEASED">RELEASED</option>
+              <option value="REFUNDED">REFUNDED</option>
+            </select>
+          </div>
+          <div className="deal-list">
+            {filteredDeals.map((deal) => (
+              <button key={deal.id} className={selectedDeal?.id === deal.id ? 'deal-row selected' : 'deal-row'} onClick={() => setSelectedDealId(deal.id)}>
+                <span className="mono strong">{deal.id}</span>
+                <Badge tone={statusTone(deal.status)}>{deal.status}</Badge>
+                <Badge tone={verdictTone(deal.verdict)}>{deal.verdict || 'NONE'}</Badge>
+                <span>{formatGen(deal.amount)}</span>
+                <span className="mono">{shortAddress(deal.buyer)} / {shortAddress(deal.seller)}</span>
+                <ArrowUpRight size={16} />
+              </button>
+            ))}
+            {filteredDeals.length === 0 && <p className="empty-line">No deals match the current filter.</p>}
           </div>
         </section>
+
+        <section className="bottom-grid">
+          <section className="panel trust-boundary">
+            <div className="panel-head">
+              <h2>Trust Boundary</h2>
+              <p>GenLayer validators render seller evidence and compare verdict meaning. The frontend only submits transactions and reads canonical state.</p>
+            </div>
+            <ul>
+              <li><CheckCircle2 size={16} /> Browser signs with the connected wallet address.</li>
+              <li><CheckCircle2 size={16} /> Adjudication waits for `TransactionStatus.FINALIZED`.</li>
+              <li><CheckCircle2 size={16} /> Release/refund claims require canonical approved states.</li>
+            </ul>
+          </section>
+
+          <section className="panel activity-panel">
+            <div className="panel-head">
+              <h2><History size={18} /> Recent wallet activity</h2>
+              <p>Session-local transaction activity. Canonical deal state remains the contract views.</p>
+            </div>
+            <div className="activity-list">
+              {activity.map((item, index) => (
+                <div className="activity-item" key={`${item.hash}-${item.time}-${index}`}>
+                  <span>{item.label}</span>
+                  <Badge tone={item.status === 'Failed' ? 'danger' : item.status === 'Finalized' || item.status === 'Accepted' ? 'success' : 'primary'}>{item.status}</Badge>
+                  {item.hash ? <a className="mono" href={explorerTxUrl(item.hash)} target="_blank" rel="noreferrer">{shortAddress(item.hash)} <ExternalLink size={12} /></a> : <span className="muted">No hash</span>}
+                  <time>{item.time}</time>
+                </div>
+              ))}
+              {activity.length === 0 && <p className="empty-line">No wallet writes in this browser session yet.</p>}
+            </div>
+          </section>
+        </section>
+      </main>
+    </div>
+  );
+}
+
+function Metric({ label, value, tone = 'neutral' }) {
+  return (
+    <div className={`metric-card ${tone}`}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function Badge({ tone = 'neutral', children }) {
+  return <span className={`badge ${tone}`}>{children}</span>;
+}
+
+function DetailCard({ icon: Icon, title, body, link, emphasis }) {
+  const hasLink = link && /^https?:\/\//.test(link);
+  return (
+    <article className={emphasis ? 'detail-card emphasis' : 'detail-card'}>
+      <h3><Icon size={16} /> {title}</h3>
+      <p>{body}</p>
+      {hasLink && (
+        <a href={link} target="_blank" rel="noreferrer">
+          Open evidence <ExternalLink size={13} />
+        </a>
+      )}
+    </article>
+  );
+}
+
+function EmptyWorkflow({ wallet, refreshDeals, connectWallet }) {
+  const emptyDeal = null;
+
+  return (
+    <div className="empty-workflow">
+      <div className="empty-state">
+        <Clipboard size={28} />
+        <div>
+          <strong>Canonical state from GenLayer is empty or unavailable.</strong>
+          <p>Open a funded escrow, connect the buyer or seller wallet, then refresh to operate a real deal.</p>
+        </div>
       </div>
-    </main>
+
+      <div className="timeline empty" aria-label="Escrow lifecycle preview">
+        {['Buyer funds', 'Seller submits', 'Validators judge', 'Release or refund'].map((label, index) => (
+          <div key={label} className="timeline-step">
+            <span>{index + 1}</span>
+            <p>{label}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="empty-cards">
+        <DetailCard icon={FileText} title="Buyer and seller terms" body="Terms are stored on the AgentDeliverableEscrow contract when the buyer funds custody." />
+        <DetailCard icon={Upload} title="Deliverable evidence" body="The seller submits a public URL that validators can independently inspect." />
+        <DetailCard icon={ShieldCheck} title="Custody consequence" body="A finalized validator verdict gates the seller release path or the buyer refund path." emphasis />
+      </div>
+
+      <div className="action-bar empty-actions">
+        <ActionButton icon={Upload} label="Submit" onClick={() => {}} disabled reason={roleReason('submit', emptyDeal, wallet)} />
+        <ActionButton icon={Gavel} label="Adjudicate" onClick={() => {}} disabled reason={roleReason('adjudicate', emptyDeal, wallet)} tone="primary" />
+        <ActionButton icon={Send} label="Release" onClick={() => {}} disabled reason={roleReason('release', emptyDeal, wallet)} tone="success" />
+        <ActionButton icon={RotateCcw} label="Refund" onClick={() => {}} disabled reason={roleReason('refund', emptyDeal, wallet)} tone="danger" />
+      </div>
+
+      <div className="empty-tools">
+        <button className="btn secondary" type="button" onClick={wallet ? refreshDeals : connectWallet}>
+          {wallet ? <RefreshCw size={16} /> : <Wallet size={16} />}
+          <span>{wallet ? 'Refresh canonical state' : 'Connect Wallet'}</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function CreateEscrow({ seller, setSeller, amount, setAmount, deadline, setDeadline, terms, setTerms, requirements, setRequirements, openDeal, busy }) {
+  return (
+    <section className="panel create-panel">
+      <div className="panel-head">
+        <h2><Lock size={18} /> Create Escrow</h2>
+        <p>Define terms and fund custody in one payable transaction.</p>
+      </div>
+      <div className="form-grid">
+        <label>
+          Seller address
+          <input value={seller} onChange={(e) => setSeller(e.target.value)} placeholder="0x..." />
+        </label>
+        <div className="dual-fields">
+          <label>
+            Amount in GEN
+            <input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" />
+          </label>
+          <label>
+            Deadline timestamp
+            <input value={deadline} onChange={(e) => setDeadline(e.target.value)} inputMode="numeric" />
+            <small>Current timestamp: {nowTs()}</small>
+          </label>
+        </div>
+        <label>
+          Deliverable terms
+          <textarea value={terms} onChange={(e) => setTerms(e.target.value)} rows={5} />
+        </label>
+        <label>
+          Evidence requirements
+          <textarea value={requirements} onChange={(e) => setRequirements(e.target.value)} rows={4} />
+        </label>
+        <button className="btn primary wide" onClick={openDeal} disabled={!!busy}>
+          <Lock size={16} />
+          Open Funded Escrow
+        </button>
+      </div>
+    </section>
   );
 }
