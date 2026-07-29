@@ -6,7 +6,9 @@ Public repository: https://github.com/duclucky/TrustlessAgent
 
 Live app: https://trustlessagent-omega.vercel.app
 
-Contract address: pending redeploy of `AgentDeliverableEscrow` on GenLayer studionet.
+Contract address: `0x957860BF1bB0c2C1C32F1215D4912963CC368c16` on GenLayer studionet.
+
+Explorer: https://genlayer-explorer.vercel.app/address/0x957860BF1bB0c2C1C32F1215D4912963CC368c16
 
 ## Problem
 
@@ -82,4 +84,4 @@ This runs the repository's static escrow checks and the frontend production buil
 
 ## Current Evidence Boundary
 
-This source fixes the architectural mismatch identified by reviewers. It is source-level and local-build evidence until redeployed and exercised on studionet with finalized transaction receipts, canonical reads, and balance proof. Do not cite the old deployment addresses for this revision.
+This source fixes the architectural mismatch identified by reviewers. The contract is deployed on GenLayer studionet and a canonical `get_deal_count` read returned `0`. A full funded buyer/seller lifecycle with release/refund balance proof is still pending.
