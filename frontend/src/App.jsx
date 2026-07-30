@@ -34,6 +34,7 @@ const DEFAULT_DELIVERABLE = 'https://trustlessagent-omega.vercel.app/weather-age
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 const EXPLORER = 'https://genlayer-explorer.vercel.app';
+const METAMASK_DOWNLOAD = 'https://metamask.io/download/';
 const TABS = ['Dashboard', 'Escrow Deals', 'Adjudication', 'Settings'];
 
 function weiFromGen(value) {
@@ -90,6 +91,15 @@ function sameAddress(a, b) {
 
 function nowTs() {
   return Math.floor(Date.now() / 1000);
+}
+
+function getInjectedProvider() {
+  const ethereum = window.ethereum;
+  if (!ethereum) return null;
+  if (Array.isArray(ethereum.providers)) {
+    return ethereum.providers.find((provider) => provider.isMetaMask) || ethereum.providers[0];
+  }
+  return ethereum;
 }
 
 function isBuyer(deal, wallet) {
@@ -247,20 +257,21 @@ export default function App() {
   async function connectWallet() {
     setError('');
     setNotice('');
-    if (!window.ethereum) {
-      setError('MetaMask or another injected wallet is required for browser write transactions.');
+    const provider = getInjectedProvider();
+    if (!provider) {
+      setError('No injected wallet was found. Open this app in Chrome or Brave with MetaMask installed and unlocked, then enable the extension for this site.');
       return;
     }
     try {
       const chainId = `0x${STUDIONET_CHAIN.id.toString(16)}`;
       try {
-        await window.ethereum.request({
+        await provider.request({
           method: 'wallet_switchEthereumChain',
           params: [{ chainId }],
         });
       } catch (switchError) {
         if (switchError?.code !== 4902 && switchError?.code !== -32603) throw switchError;
-        await window.ethereum.request({
+        await provider.request({
           method: 'wallet_addEthereumChain',
           params: [
             {
@@ -273,7 +284,7 @@ export default function App() {
           ],
         });
       }
-      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+      const accounts = await provider.request({ method: 'eth_requestAccounts' });
       setWallet(accounts[0]);
       setNotice('Wallet connected on GenLayer studionet. Canonical state from GenLayer is ready to refresh.');
     } catch (e) {
@@ -422,7 +433,20 @@ export default function App() {
           </div>
         )}
         {notice && <div className="banner success" aria-live="polite"><CheckCircle2 size={18} /><span>{notice}</span></div>}
-        {error && <div className="banner danger" role="alert"><XCircle size={18} /><span>{error}</span></div>}
+        {error && (
+          <div className="banner danger" role="alert">
+            <XCircle size={18} />
+            <span>
+              {error}
+              {error.includes('No injected wallet') && (
+                <>
+                  {' '}
+                  <a href={METAMASK_DOWNLOAD} target="_blank" rel="noreferrer">Install MetaMask</a>
+                </>
+              )}
+            </span>
+          </div>
+        )}
         {busy && <div className="banner progress" aria-live="polite"><RefreshCw className="spin" size={18} /><span>{busy}</span></div>}
 
         <section className="metric-grid" aria-label="Escrow metrics">

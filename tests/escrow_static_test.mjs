@@ -58,6 +58,11 @@ for (const required of ['open_deal', 'submit_deliverable', 'adjudicate_delivery'
 for (const required of [
   'wallet_switchEthereumChain',
   'wallet_addEthereumChain',
+  'getInjectedProvider',
+  'ethereum.providers',
+  'isMetaMask',
+  'Open this app in Chrome or Brave with MetaMask installed',
+  'https://metamask.io/download/',
   'studionet.id',
   'TransactionStatus.FINALIZED',
   'Recent wallet activity',
