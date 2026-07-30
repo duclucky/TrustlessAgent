@@ -34,7 +34,6 @@ const DEFAULT_DELIVERABLE = 'https://trustlessagent-omega.vercel.app/weather-age
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 const EXPLORER = 'https://genlayer-explorer.vercel.app';
-const METAMASK_DOWNLOAD = 'https://metamask.io/download/';
 const TABS = ['Dashboard', 'Escrow Deals', 'Adjudication', 'Settings'];
 
 function weiFromGen(value) {
@@ -93,13 +92,24 @@ function nowTs() {
   return Math.floor(Date.now() / 1000);
 }
 
-function getInjectedProvider() {
+function getInjectedProviders() {
   const ethereum = window.ethereum;
-  if (!ethereum) return null;
-  if (Array.isArray(ethereum.providers)) {
-    return ethereum.providers.find((provider) => provider.isMetaMask) || ethereum.providers[0];
-  }
-  return ethereum;
+  if (!ethereum) return [];
+  if (Array.isArray(ethereum.providers)) return ethereum.providers;
+  return [ethereum];
+}
+
+function providerKey(provider, fallback = 'injected') {
+  return provider?.info?.uuid || provider?.info?.rdns || provider?.info?.name || fallback;
+}
+
+function providerName(provider, fallback = 'EVM Wallet') {
+  if (provider?.info?.name) return provider.info.name;
+  if (provider?.isRabby) return 'Rabby';
+  if (provider?.isCoinbaseWallet) return 'Coinbase Wallet';
+  if (provider?.isTrust) return 'Trust Wallet';
+  if (provider?.isMetaMask) return 'MetaMask';
+  return fallback;
 }
 
 function isBuyer(deal, wallet) {
@@ -193,6 +203,8 @@ export default function App() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [activity, setActivity] = useState([]);
+  const [walletOptions, setWalletOptions] = useState([]);
+  const [selectedWalletKey, setSelectedWalletKey] = useState('');
 
   const contractReady = AGENT_ESCROW && AGENT_ESCROW !== ZERO_ADDRESS;
   const selectedDeal = deals.find((deal) => deal.id === selectedDealId) || deals[0] || null;
@@ -254,12 +266,52 @@ export default function App() {
     refreshDeals();
   }, []);
 
+  useEffect(() => {
+    function addWalletOptions(options) {
+      setWalletOptions((current) => {
+        const byKey = new Map(current.map((option) => [option.key, option]));
+        for (const option of options) {
+          byKey.set(option.key, option);
+        }
+        const next = Array.from(byKey.values());
+        setSelectedWalletKey((existing) => existing || next[0]?.key || '');
+        return next;
+      });
+    }
+
+    function syncLegacyProviders() {
+      addWalletOptions(getInjectedProviders().map((provider, index) => ({
+        key: providerKey(provider, `injected-${index}`),
+        name: providerName(provider, `EVM Wallet ${index + 1}`),
+        provider,
+      })));
+    }
+
+    function onProviderAnnounced(event) {
+      const detail = event.detail;
+      if (!detail?.provider) return;
+      const provider = detail.provider;
+      provider.info = detail.info;
+      addWalletOptions([{
+        key: providerKey(provider, `eip6963-${detail.info?.uuid || detail.info?.name || Date.now()}`),
+        name: providerName(provider),
+        provider,
+      }]);
+    }
+
+    window.addEventListener('eip6963:announceProvider', onProviderAnnounced);
+    window.dispatchEvent(new Event('eip6963:requestProvider'));
+    syncLegacyProviders();
+    return () => window.removeEventListener('eip6963:announceProvider', onProviderAnnounced);
+  }, []);
+
   async function connectWallet() {
     setError('');
     setNotice('');
-    const provider = getInjectedProvider();
+    const selectedOption = walletOptions.find((option) => option.key === selectedWalletKey) || walletOptions[0];
+    const provider = selectedOption?.provider || getInjectedProviders()[0];
     if (!provider) {
-      setError('No injected wallet was found. Open this app in Chrome or Brave with MetaMask installed and unlocked, then enable the extension for this site.');
+      setError('No EVM wallet extension was found. Open this app in a browser where your wallet extension is installed, unlocked, and enabled for this site.');
       return;
     }
     try {
@@ -374,6 +426,271 @@ export default function App() {
 
   const step = activeStep(selectedDeal?.status);
 
+  function renderMetrics() {
+    return (
+      <section className="metric-grid" aria-label="Escrow metrics">
+        <Metric label="Total deals" value={metrics.total} />
+        <Metric label="Active funded/submitted" value={metrics.active} tone="primary" />
+        <Metric label="Release approved" value={metrics.releaseApproved} tone="success" />
+        <Metric label="Refund approved" value={metrics.refundApproved} tone="danger" />
+        <Metric label="Closed" value={metrics.closed} tone="neutral" />
+      </section>
+    );
+  }
+
+  function renderCreateEscrow() {
+    return (
+      <CreateEscrow
+        seller={seller}
+        setSeller={setSeller}
+        amount={amount}
+        setAmount={setAmount}
+        deadline={deadline}
+        setDeadline={setDeadline}
+        terms={terms}
+        setTerms={setTerms}
+        requirements={requirements}
+        setRequirements={setRequirements}
+        openDeal={openDeal}
+        busy={busy}
+      />
+    );
+  }
+
+  function renderDealConsole(title = 'Deal Console', description = 'Operate the selected escrow from canonical contract state.') {
+    return (
+      <section className="panel deal-console">
+        <div className="panel-head split">
+          <div>
+            <h2>{title}</h2>
+            <p>{description}</p>
+          </div>
+          <div className="deal-search">
+            <Search size={16} />
+            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search deal or address" />
+          </div>
+        </div>
+
+        {selectedDeal ? (
+          <>
+            <div className="deal-summary">
+              <div>
+                <div className="row-tight">
+                  <span className="mono strong">{selectedDeal.id}</span>
+                  <Badge tone={statusTone(selectedDeal.status)}>{selectedDeal.status || 'UNKNOWN'}</Badge>
+                  <Badge tone={verdictTone(selectedDeal.verdict)}>{selectedDeal.verdict || 'NONE'}</Badge>
+                </div>
+                <strong className="amount">{formatGen(selectedDeal.amount)}</strong>
+              </div>
+              <div className="party-stack">
+                <span>Buyer <b className="mono">{shortAddress(selectedDeal.buyer)}</b></span>
+                <span>Seller <b className="mono">{shortAddress(selectedDeal.seller)}</b></span>
+                <span>Deadline <b className="mono">{selectedDeal.deadline}</b></span>
+              </div>
+            </div>
+
+            <div className="timeline" aria-label="Deal lifecycle">
+              {['Funded', 'Submitted', 'Adjudicated', selectedDeal.status === 'REFUNDED' ? 'Refunded' : 'Released'].map((label, index) => (
+                <div key={label} className={index + 1 <= step ? 'timeline-step done' : 'timeline-step'}>
+                  <span>{index + 1}</span>
+                  <p>{label}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="details-grid">
+              <DetailCard icon={FileText} title="Terms" body={selectedDeal.terms || 'No terms read from contract.'} />
+              <DetailCard icon={Upload} title="Deliverable evidence" body={selectedDeal.deliverable || 'No deliverable submitted yet.'} link={selectedDeal.deliverable} />
+              <DetailCard icon={Gavel} title="Validator reason" body={selectedDeal.reason || 'No validator reason yet.'} emphasis />
+            </div>
+
+            <div className="submit-inline">
+              <label htmlFor="deliverable">Deliverable URL</label>
+              <div>
+                <input id="deliverable" value={deliverableUrl} onChange={(e) => setDeliverableUrl(e.target.value)} />
+                <button className="btn secondary" type="button" onClick={() => setDeliverableUrl(DEFAULT_DELIVERABLE)}>
+                  Use verified sample
+                </button>
+              </div>
+            </div>
+
+            <div className="action-bar">
+              <ActionButton icon={Upload} label="Submit" onClick={submitDeliverable} disabled={!canSubmit(selectedDeal, wallet)} reason={roleReason('submit', selectedDeal, wallet)} busy={busy === 'Submit deliverable evidence'} />
+              <ActionButton icon={Gavel} label="Adjudicate" onClick={adjudicate} disabled={!canAdjudicate(selectedDeal, wallet)} reason={roleReason('adjudicate', selectedDeal, wallet)} busy={busy === 'Waiting for validator consensus'} tone="primary" />
+              <ActionButton icon={Send} label="Release" onClick={release} disabled={!canRelease(selectedDeal, wallet)} reason={roleReason('release', selectedDeal, wallet)} busy={busy === 'Release escrow to seller'} tone="success" />
+              <ActionButton icon={RotateCcw} label="Refund" onClick={refund} disabled={!canRefund(selectedDeal, wallet)} reason={roleReason('refund', selectedDeal, wallet)} busy={busy === 'Refund escrow to buyer'} tone="danger" />
+            </div>
+          </>
+        ) : (
+          <EmptyWorkflow
+            wallet={wallet}
+            refreshDeals={refreshDeals}
+            connectWallet={connectWallet}
+          />
+        )}
+      </section>
+    );
+  }
+
+  function renderDealInventory() {
+    return (
+      <section className="panel deal-inventory">
+        <div className="panel-head split">
+          <div>
+            <h2>Escrow Deals</h2>
+            <p>Every row is read from `get_deal` and related views.</p>
+          </div>
+          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+            <option value="ALL">All statuses</option>
+            <option value="FUNDED">FUNDED</option>
+            <option value="SUBMITTED">SUBMITTED</option>
+            <option value="RELEASE_APPROVED">RELEASE_APPROVED</option>
+            <option value="REFUND_APPROVED">REFUND_APPROVED</option>
+            <option value="RELEASED">RELEASED</option>
+            <option value="REFUNDED">REFUNDED</option>
+          </select>
+        </div>
+        <div className="deal-list">
+          {filteredDeals.map((deal) => (
+            <button key={deal.id} className={selectedDeal?.id === deal.id ? 'deal-row selected' : 'deal-row'} onClick={() => setSelectedDealId(deal.id)}>
+              <span className="mono strong">{deal.id}</span>
+              <Badge tone={statusTone(deal.status)}>{deal.status}</Badge>
+              <Badge tone={verdictTone(deal.verdict)}>{deal.verdict || 'NONE'}</Badge>
+              <span>{formatGen(deal.amount)}</span>
+              <span className="mono">{shortAddress(deal.buyer)} / {shortAddress(deal.seller)}</span>
+              <ArrowUpRight size={16} />
+            </button>
+          ))}
+          {filteredDeals.length === 0 && <p className="empty-line">No deals match the current filter.</p>}
+        </div>
+      </section>
+    );
+  }
+
+  function renderTrustBoundary() {
+    return (
+      <section className="panel trust-boundary">
+        <div className="panel-head">
+          <h2>Trust Boundary</h2>
+          <p>GenLayer validators render seller evidence and compare verdict meaning. The frontend only submits transactions and reads canonical state.</p>
+        </div>
+        <ul>
+          <li><CheckCircle2 size={16} /> Browser signs with the connected wallet address.</li>
+          <li><CheckCircle2 size={16} /> Adjudication waits for `TransactionStatus.FINALIZED`.</li>
+          <li><CheckCircle2 size={16} /> Release/refund claims require canonical approved states.</li>
+        </ul>
+      </section>
+    );
+  }
+
+  function renderActivityPanel() {
+    return (
+      <section className="panel activity-panel">
+        <div className="panel-head">
+          <h2><History size={18} /> Recent wallet activity</h2>
+          <p>Session-local transaction activity. Canonical deal state remains the contract views.</p>
+        </div>
+        <div className="activity-list">
+          {activity.map((item, index) => (
+            <div className="activity-item" key={`${item.hash}-${item.time}-${index}`}>
+              <span>{item.label}</span>
+              <Badge tone={item.status === 'Failed' ? 'danger' : item.status === 'Finalized' || item.status === 'Accepted' ? 'success' : 'primary'}>{item.status}</Badge>
+              {item.hash ? <a className="mono" href={explorerTxUrl(item.hash)} target="_blank" rel="noreferrer">{shortAddress(item.hash)} <ExternalLink size={12} /></a> : <span className="muted">No hash</span>}
+              <time>{item.time}</time>
+            </div>
+          ))}
+          {activity.length === 0 && <p className="empty-line">No wallet writes in this browser session yet.</p>}
+        </div>
+      </section>
+    );
+  }
+
+  function renderDashboardTab() {
+    return (
+      <>
+        {renderMetrics()}
+        <section className="layout-grid">
+          {renderCreateEscrow()}
+          {renderDealConsole()}
+        </section>
+        <section className="bottom-grid">
+          {renderTrustBoundary()}
+          {renderActivityPanel()}
+        </section>
+      </>
+    );
+  }
+
+  function renderDealsTab() {
+    return (
+      <section className="tab-stack">
+        {renderMetrics()}
+        {renderDealInventory()}
+      </section>
+    );
+  }
+
+  function renderAdjudicationTab() {
+    const submittedDeals = deals.filter((deal) => ['SUBMITTED', 'RELEASE_APPROVED', 'REFUND_APPROVED'].includes(deal.status));
+    return (
+      <section className="tab-stack">
+        <section className="adjudication-grid">
+          {renderDealConsole('Adjudication Queue', 'Review seller evidence, request validator consensus, then settle the approved path.')}
+          <section className="panel route-panel">
+            <div className="panel-head">
+              <h2>Adjudication queue</h2>
+              <p>Deals that need validator judgment or final settlement.</p>
+            </div>
+            <div className="queue-list">
+              {submittedDeals.map((deal) => (
+                <button key={deal.id} className={selectedDeal?.id === deal.id ? 'queue-item selected' : 'queue-item'} onClick={() => setSelectedDealId(deal.id)}>
+                  <span className="mono strong">{deal.id}</span>
+                  <Badge tone={statusTone(deal.status)}>{deal.status}</Badge>
+                  <span>{deal.verdict || 'NONE'}</span>
+                </button>
+              ))}
+              {submittedDeals.length === 0 && <p className="empty-line">No submitted or approved deals need adjudication right now.</p>}
+            </div>
+          </section>
+        </section>
+        {renderActivityPanel()}
+      </section>
+    );
+  }
+
+  function renderSettingsTab() {
+    return (
+      <section className="settings-grid">
+        <section className="panel">
+          <div className="panel-head">
+            <h2>Contract configuration</h2>
+            <p>Production dApp wiring for the active Studionet escrow contract.</p>
+          </div>
+          <div className="settings-list">
+            <span>Network <b>GenLayer Studionet</b></span>
+            <span>Contract <b className="mono">{shortAddress(AGENT_ESCROW)}</b></span>
+            <span>Connected wallet <b className="mono">{shortAddress(wallet)}</b></span>
+            <span>Canonical reads <b>{contractReady ? 'Enabled' : 'Missing contract address'}</b></span>
+          </div>
+        </section>
+        {renderTrustBoundary()}
+        <section className="panel">
+          <div className="panel-head">
+            <h2>Evidence policy</h2>
+            <p>Seller deliverables must be bounded public URLs. Validators render those URLs and compare release/refund meaning.</p>
+          </div>
+          <div className="settings-list">
+            <span>Allowed evidence <b>HTTP or HTTPS URLs</b></span>
+            <span>Max URLs <b>4 per deal</b></span>
+            <span>Refund clock <b>Contract transaction time</b></span>
+            <span>Settlement invariant <b>Escrow zeroed before transfer</b></span>
+          </div>
+        </section>
+        {renderActivityPanel()}
+      </section>
+    );
+  }
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -419,6 +736,13 @@ export default function App() {
             <button className="icon-btn" onClick={() => refreshDeals()} aria-label="Refresh canonical state" disabled={!!busy}>
               <RefreshCw size={17} />
             </button>
+            {walletOptions.length > 1 && (
+              <select className="wallet-select" value={selectedWalletKey} onChange={(e) => setSelectedWalletKey(e.target.value)} aria-label="Wallet extension">
+                {walletOptions.map((option) => (
+                  <option key={option.key} value={option.key}>{option.name}</option>
+                ))}
+              </select>
+            )}
             <button className="btn primary" onClick={wallet ? () => refreshDeals() : connectWallet}>
               <Wallet size={16} />
               <span>{wallet ? shortAddress(wallet) : 'Connect Wallet'}</span>
@@ -438,17 +762,18 @@ export default function App() {
             <XCircle size={18} />
             <span>
               {error}
-              {error.includes('No injected wallet') && (
-                <>
-                  {' '}
-                  <a href={METAMASK_DOWNLOAD} target="_blank" rel="noreferrer">Install MetaMask</a>
-                </>
-              )}
             </span>
           </div>
         )}
         {busy && <div className="banner progress" aria-live="polite"><RefreshCw className="spin" size={18} /><span>{busy}</span></div>}
 
+        {activeTab === 'Dashboard' && renderDashboardTab()}
+        {activeTab === 'Escrow Deals' && renderDealsTab()}
+        {activeTab === 'Adjudication' && renderAdjudicationTab()}
+        {activeTab === 'Settings' && renderSettingsTab()}
+
+        {false && (
+          <>
         <section className="metric-grid" aria-label="Escrow metrics">
           <Metric label="Total deals" value={metrics.total} />
           <Metric label="Active funded/submitted" value={metrics.active} tone="primary" />
@@ -607,6 +932,8 @@ export default function App() {
             </div>
           </section>
         </section>
+          </>
+        )}
       </main>
     </div>
   );

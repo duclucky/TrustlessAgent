@@ -217,6 +217,16 @@ h1 {
   font-size: 13px;
 }
 
+.wallet-select {
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 800;
+  padding: 0 12px;
+}
+
 .icon-btn {
   width: 44px;
   display: grid;
@@ -708,6 +718,64 @@ select:focus {
   margin-top: 18px;
 }
 
+.tab-stack {
+  display: grid;
+  gap: 18px;
+}
+
+.adjudication-grid,
+.settings-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.65fr);
+  gap: 18px;
+}
+
+.settings-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.settings-list,
+.queue-list {
+  display: grid;
+}
+
+.settings-list {
+  gap: 12px;
+  padding: 16px;
+}
+
+.settings-list span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  color: var(--muted);
+}
+
+.settings-list b {
+  color: var(--ink);
+  text-align: right;
+}
+
+.queue-item {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: #fff;
+  min-height: 56px;
+  display: grid;
+  grid-template-columns: 90px 1fr 110px;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  text-align: left;
+}
+
+.queue-item:hover,
+.queue-item.selected {
+  background: var(--surface-blue);
+}
+
 .deal-list {
   display: grid;
 }
@@ -800,7 +868,9 @@ select:focus {
   }
 
   .layout-grid,
-  .bottom-grid {
+  .bottom-grid,
+  .adjudication-grid,
+  .settings-grid {
     grid-template-columns: 1fr;
   }
 
@@ -843,13 +913,21 @@ select:focus {
   }
 
   .deal-row,
+  .queue-item,
   .activity-item,
   .submit-inline > div {
     grid-template-columns: 1fr;
   }
 
-  .deal-row {
+  .deal-row,
+  .queue-item {
     gap: 8px;
+  }
+
+  .settings-list span {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
   }
 
   .action-bar {

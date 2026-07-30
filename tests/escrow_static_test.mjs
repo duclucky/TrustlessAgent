@@ -58,11 +58,19 @@ for (const required of ['open_deal', 'submit_deliverable', 'adjudicate_delivery'
 for (const required of [
   'wallet_switchEthereumChain',
   'wallet_addEthereumChain',
-  'getInjectedProvider',
+  'getInjectedProviders',
+  'walletOptions',
+  'selectedWalletKey',
+  'eip6963:requestProvider',
   'ethereum.providers',
-  'isMetaMask',
-  'Open this app in Chrome or Brave with MetaMask installed',
-  'https://metamask.io/download/',
+  'No EVM wallet extension was found',
+  'Wallet extension',
+  'renderDashboardTab',
+  'renderDealsTab',
+  'renderAdjudicationTab',
+  'renderSettingsTab',
+  'Contract configuration',
+  'Adjudication queue',
   'studionet.id',
   'TransactionStatus.FINALIZED',
   'Recent wallet activity',
@@ -83,6 +91,9 @@ for (const required of ['.app-shell', '.sidebar', '.metric-grid', '.deal-console
 
 for (const forbidden of ['142', 'DEAL-892A', '0.5 ETH', 'Force Refund', 'TechCorp Inc.']) {
   assert.equal(frontend.includes(forbidden), false, `frontend must not ship Stitch mock data: ${forbidden}`);
+}
+for (const forbidden of ['Install MetaMask', 'https://metamask.io/download/', 'MetaMask installed and unlocked']) {
+  assert.equal(frontend.includes(forbidden), false, `frontend must not hard-code a MetaMask-only wallet path: ${forbidden}`);
 }
 assert.equal(frontend.includes('claim_refund\', [selectedDeal.id, nowTs()]'), false, 'frontend must not pass a caller timestamp to claim_refund');
 
